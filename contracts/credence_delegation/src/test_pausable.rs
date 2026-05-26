@@ -66,6 +66,46 @@ fn test_pause_multisig_flow() {
 }
 
 #[test]
+fn test_pause_proposal_id_uniqueness_and_scoped_approval_lifecycle() {
+    let (env, admin, client) = setup();
+
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let s3 = Address::generate(&env);
+
+    client.set_pause_signer(&admin, &s1, &true);
+    client.set_pause_signer(&admin, &s2, &true);
+    client.set_pause_signer(&admin, &s3, &true);
+    client.set_pause_threshold(&admin, &2u32);
+
+    let proposal_a = client.pause(&s1).unwrap();
+    let proposal_b = client.unpause(&s2).unwrap();
+
+    assert_ne!(proposal_a, proposal_b);
+    assert_eq!(proposal_a, 0);
+    assert_eq!(proposal_b, 1);
+
+    client.approve_pause_proposal(&s2, &proposal_a);
+    assert!(client.try_execute_pause_proposal(&proposal_b).is_err());
+
+    client.approve_pause_proposal(&s3, &proposal_a);
+    client.execute_pause_proposal(&proposal_a);
+    assert!(client.is_paused());
+    assert!(!env.storage().instance().has(&DataKey::PauseProposal(proposal_a)));
+    assert!(!env.storage().instance().has(&DataKey::PauseApprovalCount(proposal_a)));
+
+    client.approve_pause_proposal(&s1, &proposal_b);
+    assert!(client.try_execute_pause_proposal(&proposal_b).is_err());
+    client.approve_pause_proposal(&s3, &proposal_b);
+    client.execute_pause_proposal(&proposal_b);
+    assert!(!client.is_paused());
+    assert!(!env.storage().instance().has(&DataKey::PauseProposal(proposal_b)));
+    assert!(!env.storage().instance().has(&DataKey::PauseApprovalCount(proposal_b)));
+
+    assert!(client.try_execute_pause_proposal(&proposal_a).is_err());
+}
+
+#[test]
 fn test_execute_requires_threshold() {
     let (env, admin, client) = setup();
 

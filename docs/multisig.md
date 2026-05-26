@@ -146,6 +146,11 @@ Submit a new proposal for multi-sig approval.
 **Returns:**
 - `u64` - Unique proposal ID
 
+**Notes:**
+- Proposal ids are auto-incremented and scoped per proposal.
+- Approval state and counts are recorded by proposal id to prevent cross-contamination between concurrent proposals.
+- Executed proposals clear proposal state and approval counters for the allocated id.
+
 **Panics:**
 - If caller is not a signer
 - If description is empty

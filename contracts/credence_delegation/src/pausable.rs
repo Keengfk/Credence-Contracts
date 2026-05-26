@@ -116,6 +116,10 @@ fn require_pause_signer(e: &Env, signer: &Address) {
     }
 }
 
+/// Allocate a unique pause proposal id and advance the counter.
+///
+/// `PauseProposalCounter` stores the next unused proposal id.
+/// The allocated id is returned, and the counter is incremented to prevent reuse.
 fn next_proposal_id(e: &Env) -> u64 {
     let id: u64 = e
         .storage()
@@ -247,6 +251,9 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     e.storage()
         .instance()
         .remove(&DataKey::PauseProposal(proposal_id));
+    e.storage()
+        .instance()
+        .remove(&DataKey::PauseApprovalCount(proposal_id));
 }
 
 fn do_pause(e: &Env, proposal_id: Option<u64>) {
