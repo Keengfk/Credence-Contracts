@@ -58,6 +58,20 @@ pub enum DataKey {
     AttesterStake(Address),
 }
 
+// Storage TTL policy constants. Tuned for maximum bond durations and long-lived
+// attestation records. Values taken from repository test snapshots (max_entry_ttl).
+// Ensure TTL covers the maximum allowed bond duration (365 days).
+const STORAGE_TTL_EXTEND_TO: u64 = 31_536_000; // 365 days in seconds
+
+// Helper: bump storage TTL for a given key in instance storage. This calls
+// `extend_ttl` on the instance storage to ensure long-lived entries do not
+// expire silently. It's safe to call repeatedly on hot paths.
+fn bump_instance_ttl<K: soroban_sdk::IntoVal<Env> + Clone>(e: &Env, key: &K) {
+    // Best-effort: call extend_ttl if available on the instance API.
+    // If the underlying SDK changes, this single helper isolates the callsite.
+    e.storage().instance().extend_ttl(key, &STORAGE_TTL_EXTEND_TO);
+}
+
 #[contract]
 pub struct CredenceBond;
 
@@ -166,6 +180,7 @@ impl CredenceBond {
         };
         let key = DataKey::Bond;
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e, &key);
         let tier = tiered_bond::get_tier_for_amount(amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, BondTier::Bronze, tier);
         bond
@@ -176,10 +191,13 @@ impl CredenceBond {
     /// Errors:
     /// - `ContractError::BondNotFound` (200)
     pub fn get_identity_state(e: Env) -> IdentityBond {
-        e.storage()
+        let key = DataKey::Bond;
+        let bond = e.storage()
             .instance()
-                .get::<_, IdentityBond>(&DataKey::Bond)
-                .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound))
+            .get::<_, IdentityBond>(&key)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        bump_instance_ttl(&e, &key);
+        bond
     }
 
     /// Add an attestation for a subject (only authorized attesters can call).
@@ -249,7 +267,9 @@ impl CredenceBond {
         e.storage()
             .instance()
             .set(&DataKey::Attestation(id), &attestation);
+        bump_instance_ttl(&e, &DataKey::Attestation(id));
         e.storage().instance().set(&dedup_key, &id);
+        bump_instance_ttl(&e, &dedup_key);
 
         let subject_key = DataKey::SubjectAttestations(subject.clone());
         let mut attestations: Vec<u64> = e
@@ -259,12 +279,14 @@ impl CredenceBond {
             .unwrap_or(Vec::new(&e));
         attestations.push_back(id);
         e.storage().instance().set(&subject_key, &attestations);
+        bump_instance_ttl(&e, &subject_key);
 
         let count_key = DataKey::SubjectAttestationCount(subject.clone());
         let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
         e.storage()
             .instance()
             .set(&count_key, &count.saturating_add(1));
+        bump_instance_ttl(&e, &count_key);
 
         e.events().publish(
             (Symbol::new(&e, "attestation_added"), subject),
@@ -300,6 +322,7 @@ impl CredenceBond {
 
         attestation.revoked = true;
         e.storage().instance().set(&key, &attestation);
+        bump_instance_ttl(&e, &key);
 
         let dedup_key = types::AttestationDedupKey {
             verifier: attestation.verifier.clone(),
@@ -307,12 +330,14 @@ impl CredenceBond {
             attestation_data: attestation.attestation_data.clone(),
         };
         e.storage().instance().remove(&dedup_key);
+        // Removing doesn't need a TTL bump; keep for symmetry.
 
         let count_key = DataKey::SubjectAttestationCount(attestation.identity.clone());
         let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
         e.storage()
             .instance()
             .set(&count_key, &count.saturating_sub(1));
+        bump_instance_ttl(&e, &count_key);
 
         e.events().publish(
             (
@@ -328,26 +353,35 @@ impl CredenceBond {
     /// Errors:
     /// - `ContractError::AttestationNotFound` (301)
     pub fn get_attestation(e: Env, attestation_id: u64) -> Attestation {
-        e.storage()
+        let key = DataKey::Attestation(attestation_id);
+        let att = e.storage()
             .instance()
-            .get(&DataKey::Attestation(attestation_id))
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::AttestationNotFound))
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::AttestationNotFound));
+        bump_instance_ttl(&e, &key);
+        att
     }
 
     /// Get all attestation IDs for a subject.
     pub fn get_subject_attestations(e: Env, subject: Address) -> Vec<u64> {
-        e.storage()
+        let key = DataKey::SubjectAttestations(subject);
+        let v = e.storage()
             .instance()
-            .get(&DataKey::SubjectAttestations(subject))
-            .unwrap_or(Vec::new(&e))
+            .get(&key)
+            .unwrap_or(Vec::new(&e));
+        bump_instance_ttl(&e, &key);
+        v
     }
 
     /// Get attestation count for a subject (identity). O(1).
     pub fn get_subject_attestation_count(e: Env, subject: Address) -> u32 {
-        e.storage()
+        let key = DataKey::SubjectAttestationCount(subject);
+        let c = e.storage()
             .instance()
-            .get(&DataKey::SubjectAttestationCount(subject))
-            .unwrap_or(0)
+            .get(&key)
+            .unwrap_or(0);
+        bump_instance_ttl(&e, &key);
+        c
     }
 
     /// Get current nonce for an identity (for replay prevention). Use this value in the next state-changing call.
@@ -403,6 +437,7 @@ impl CredenceBond {
             .instance()
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        bump_instance_ttl(&e, &key);
 
         // Calculate available balance (bonded - slashed)
         let available = bond
@@ -427,6 +462,7 @@ impl CredenceBond {
         }
 
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e, &key);
         bond
     }
 
@@ -446,6 +482,7 @@ impl CredenceBond {
             .instance()
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        bump_instance_ttl(&e, &key);
 
         let available = bond
             .bonded_amount
@@ -484,6 +521,7 @@ impl CredenceBond {
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e, &key);
         bond
     }
 
@@ -500,6 +538,7 @@ impl CredenceBond {
             .instance()
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        bump_instance_ttl(&e, &key);
         if !bond.is_rolling {
             panic_with_error!(e, ContractError::NotRollingBond);
         }
@@ -535,6 +574,7 @@ impl CredenceBond {
         }
         rolling_bond::apply_renewal(&mut bond, now);
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e, &key);
         e.events().publish(
             (Symbol::new(&e, "bond_renewed"),),
             (bond.identity.clone(), bond.bond_start, bond.bond_duration),
@@ -588,6 +628,7 @@ impl CredenceBond {
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
 
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e, &key);
         bond
     }
 
@@ -603,6 +644,7 @@ impl CredenceBond {
             .instance()
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        bump_instance_ttl(&e, &key);
 
         // Perform duration extension with overflow protection
         bond.bond_duration = bond
@@ -617,6 +659,7 @@ impl CredenceBond {
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
 
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e, &key);
         bond
     }
 
@@ -645,6 +688,8 @@ impl CredenceBond {
             .instance()
             .get(&bond_key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        bump_instance_ttl(&e, &bond_key);
+        bump_instance_ttl(&e, &bond_key);
 
         if bond.identity != identity {
             Self::release_lock(&e);
@@ -673,6 +718,8 @@ impl CredenceBond {
             notice_period: bond.notice_period,
         };
         e.storage().instance().set(&bond_key, &updated);
+        bump_instance_ttl(&e, &bond_key);
+        bump_instance_ttl(&e, &bond_key);
 
         // External call: invoke callback if a callback contract is registered.
         // In production this would be a token transfer; here we use a hook for testing.
