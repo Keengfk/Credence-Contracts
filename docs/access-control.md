@@ -49,6 +49,26 @@ This modifier allows either admin OR verifier to proceed, enabling shared respon
 
 ## API Reference
 
+## Bond Entrypoint Authority Matrix
+
+The bond contract uses explicit authorization at each state-changing entrypoint.
+
+| Entrypoint | Scope | Required auth |
+|---|---|---|
+| `create_bond(identity, ...)` | Owner-scoped | `identity.require_auth()` |
+| `withdraw(...)` | Owner-scoped | Stored bond owner: `bond.identity.require_auth()` |
+| `withdraw_early(...)` | Owner-scoped | Stored bond owner: `bond.identity.require_auth()` |
+| `top_up(...)` | Owner-scoped | Stored bond owner: `bond.identity.require_auth()` |
+| `extend_duration(...)` | Owner-scoped | Stored bond owner: `bond.identity.require_auth()` |
+| `request_withdrawal(...)` | Owner-scoped | Stored bond owner: `bond.identity.require_auth()` |
+| `renew_if_rolling(...)` | Owner-scoped | Stored bond owner: `bond.identity.require_auth()` |
+| `withdraw_bond(identity)` | Owner-scoped | `identity.require_auth()` and `bond.identity == identity` |
+| `slash(...)` / `slash_bond(...)` | Admin-only | Stored admin check plus `admin.require_auth()` |
+| `set_early_exit_config(...)` | Admin-only | Stored admin check plus `admin.require_auth()` |
+| `register_attester(...)` / `unregister_attester(...)` | Admin-only | Stored admin `require_auth()` |
+| `set_attester_stake(...)` / `set_weight_config(...)` | Admin-only | Stored admin check plus `admin.require_auth()` |
+| `collect_fees(...)` | Admin-only | Stored admin check plus `admin.require_auth()` |
+
 ### Access Control Modifiers
 
 #### `require_admin(e: &Env, caller: &Address)`

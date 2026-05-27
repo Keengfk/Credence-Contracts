@@ -152,8 +152,10 @@ impl CredenceBond {
             .unwrap_or(false)
     }
 
-    /// Create or top-up a bond for an identity. In a full implementation this would
-    /// transfer USDC from the caller and store the bond.
+    /// Create or top-up a bond for an identity.
+    ///
+    /// Authority: `identity` must authorize this call.
+    /// In a full implementation this would transfer USDC from the caller and store the bond.
     pub fn create_bond(
         e: Env,
         identity: Address,
@@ -162,6 +164,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
+        identity.require_auth();
         let bond_start = e.ledger().timestamp();
 
         // Verify the end timestamp wouldn't overflow
@@ -426,6 +429,8 @@ impl CredenceBond {
     }
 
     /// Withdraw from bond. Checks that the bond has sufficient balance after accounting for slashed amount.
+    ///
+    /// Authority: stored bond owner (`bond.identity`) must authorize this call.
     /// Returns the updated bond with reduced bonded_amount.
     ///
     /// Errors:
@@ -470,6 +475,8 @@ impl CredenceBond {
     }
 
     /// Withdraw before lock-up end; applies early exit penalty and transfers penalty to treasury.
+    ///
+    /// Authority: stored bond owner (`bond.identity`) must authorize this call.
     /// Net amount to user = amount - penalty. Use when lock-up has not yet ended.
     ///
     /// Errors:
@@ -876,6 +883,16 @@ impl CredenceBond {
     fn check_lock(e: &Env) -> bool {
         let key = Symbol::new(e, "locked");
         e.storage().instance().get(&key).unwrap_or(false)
+    }
+
+    fn load_bond_and_require_owner_auth(e: &Env, key: &DataKey) -> IdentityBond {
+        let bond: IdentityBond = e
+            .storage()
+            .instance()
+            .get(key)
+            .unwrap_or_else(|| panic!("no bond"));
+        bond.identity.require_auth();
+        bond
     }
 }
 
