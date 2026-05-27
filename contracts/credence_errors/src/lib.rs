@@ -55,7 +55,11 @@ pub enum ErrorCategory {
 ///   500 - 599 : Delegation
 ///   600 - 699 : Treasury
 ///   700 - 799 : Arithmetic
-#[contracterror]
+// Keep conversions generated, but do not export this utility enum as contract
+// spec metadata. The shared enum has more variants than Soroban's current
+// exported error-enum case vector limit supports, and this crate is not a
+// deployed contract interface.
+#[contracterror(export = false)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ContractError {
