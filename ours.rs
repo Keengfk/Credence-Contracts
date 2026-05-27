@@ -699,7 +699,10 @@ impl CredenceBond {
     }
 
     /// Withdraw the full bonded amount back to the identity.
-    /// Uses a reentrancy guard to prevent re-entrance during external calls.
+    /// Uses a panic-safe reentrancy guard to prevent re-entrance during external calls.
+    ///
+    /// All reads and validations are performed BEFORE acquiring the lock to ensure
+    /// the lock cannot be stuck by a panic during validation.
     ///
     /// Errors:
     /// - `ContractError::BondNotFound` (200)
@@ -708,8 +711,9 @@ impl CredenceBond {
     /// - `ContractError::ReentrancyDetected` (207)
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
         identity.require_auth();
-        Self::acquire_lock(&e);
 
+        // PHASE 1: Read and validate BEFORE acquiring lock
+        // This ensures no panic can occur while holding the lock during reads
         let bond_key = DataKey::Bond;
         let bond: IdentityBond = e
             .storage()
@@ -717,21 +721,20 @@ impl CredenceBond {
             .get(&bond_key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
         bump_instance_ttl(&e, &bond_key);
-        bump_instance_ttl(&e, &bond_key);
 
+        // Validate ownership
         if bond.identity != identity {
-            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotBondOwner);
         }
+        
+        // Validate bond is active
         if !bond.active {
-            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotActive);
         }
 
-        // Rolling bonds must have completed the notice window before funds can leave.
+        // Validate rolling bond notice period
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
-                Self::release_lock(&e);
                 panic!("withdrawal not requested");
             }
             let earliest = bond
@@ -739,42 +742,43 @@ impl CredenceBond {
                 .checked_add(bond.notice_period_duration)
                 .expect("notice period overflow");
             if e.ledger().timestamp() < earliest {
-                Self::release_lock(&e);
                 panic!("notice period not elapsed");
             }
         }
 
+        // Calculate withdrawal amount
         let withdraw_amount = bond.bonded_amount - bond.slashed_amount;
 
-        // State update BEFORE external interaction (checks-effects-interactions)
+        // Read callback address before acquiring lock
+        let cb_key = Symbol::new(&e, "callback");
+        let cb_addr = e.storage().instance().get::<_, Address>(&cb_key);
+
+        // PHASE 2: Acquire lock (RAII guard ensures automatic release)
+        let _guard = Self::acquire_lock(&e);
+
+        // PHASE 3: State updates (checks-effects-interactions pattern)
         let updated = IdentityBond {
             identity: identity.clone(),
             bonded_amount: 0,
             bond_start: bond.bond_start,
             bond_duration: bond.bond_duration,
             slashed_amount: bond.slashed_amount,
-            is_rolling: bond.is_rolling,
-            notice_period: bond.notice_period,
-            withdrawal_requested_at: bond.withdrawal_requested_at,
             active: false,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period: bond.notice_period,
+            notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e, &bond_key);
-        bump_instance_ttl(&e, &bond_key);
 
-        // External call: invoke callback if a callback contract is registered.
-        // In production this would be a token transfer; here we use a hook for testing.
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+        // PHASE 4: External call (with lock held, but guard ensures release on panic)
+        if let Some(cb_addr) = cb_addr {
             let fn_name = Symbol::new(&e, "on_withdraw");
             let args: Vec<Val> = Vec::from_array(&e, [withdraw_amount.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
-        Self::release_lock(&e);
+        // Lock automatically released when _guard goes out of scope
         withdraw_amount
     }
 
@@ -786,18 +790,29 @@ impl CredenceBond {
     /// - `ContractError::NotAdmin` (100)
     /// - `ContractError::BondNotFound` (200)
     /// - `ContractError::BondNotActive` (201)
+    /// Slash a portion of a bond. Only callable by admin.
+    /// Uses a panic-safe reentrancy guard to prevent re-entrance during external calls.
+    ///
+    /// All reads and validations are performed BEFORE acquiring the lock to ensure
+    /// the lock cannot be stuck by a panic during validation.
+    ///
+    /// Errors:
+    /// - `ContractError::NotInitialized` (1)
+    /// - `ContractError::NotAdmin` (100)
+    /// - `ContractError::BondNotFound` (200)
+    /// - `ContractError::BondNotActive` (201)
     /// - `ContractError::SlashExceedsBond` (203)
     pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
         admin.require_auth();
-        Self::acquire_lock(&e);
 
+        // PHASE 1: Read and validate BEFORE acquiring lock
         let stored_admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        
         if stored_admin != admin {
-            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotAdmin);
         }
 
@@ -809,80 +824,90 @@ impl CredenceBond {
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
 
         if !bond.active {
-            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotActive);
         }
 
         let new_slashed = bond.slashed_amount + slash_amount;
         if new_slashed > bond.bonded_amount {
-            Self::release_lock(&e);
             panic_with_error!(e, ContractError::SlashExceedsBond);
         }
 
-        // State update BEFORE external interaction
+        // Read callback address before acquiring lock
+        let cb_key = Symbol::new(&e, "callback");
+        let cb_addr = e.storage().instance().get::<_, Address>(&cb_key);
+
+        // PHASE 2: Acquire lock (RAII guard ensures automatic release)
+        let _guard = Self::acquire_lock(&e);
+
+        // PHASE 3: State update BEFORE external interaction
         let updated = IdentityBond {
             identity: bond.identity.clone(),
             bonded_amount: bond.bonded_amount,
             bond_start: bond.bond_start,
             bond_duration: bond.bond_duration,
             slashed_amount: new_slashed,
-            is_rolling: bond.is_rolling,
-            notice_period: bond.notice_period,
-            withdrawal_requested_at: bond.withdrawal_requested_at,
             active: bond.active,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period: bond.notice_period,
+            notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
 
-        // External call: invoke callback if registered
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+        // PHASE 4: External call (with lock held, but guard ensures release on panic)
+        if let Some(cb_addr) = cb_addr {
             let fn_name = Symbol::new(&e, "on_slash");
             let args: Vec<Val> = Vec::from_array(&e, [slash_amount.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
-        Self::release_lock(&e);
+        // Lock automatically released when _guard goes out of scope
         new_slashed
     }
 
     /// Collect accumulated protocol fees. Only callable by admin.
-    /// Uses a reentrancy guard to prevent re-entrance during external calls.
+    /// Uses a panic-safe reentrancy guard to prevent re-entrance during external calls.
+    ///
+    /// All reads and validations are performed BEFORE acquiring the lock to ensure
+    /// the lock cannot be stuck by a panic during validation.
     ///
     /// Errors:
     /// - `ContractError::NotInitialized` (1)
     /// - `ContractError::NotAdmin` (100)
     pub fn collect_fees(e: Env, admin: Address) -> i128 {
         admin.require_auth();
-        Self::acquire_lock(&e);
 
+        // PHASE 1: Read and validate BEFORE acquiring lock
         let stored_admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        
         if stored_admin != admin {
-            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotAdmin);
         }
 
         let fee_key = Symbol::new(&e, "fees");
         let fees: i128 = e.storage().instance().get(&fee_key).unwrap_or(0);
 
-        // State update BEFORE external interaction
+        // Read callback address before acquiring lock
+        let cb_key = Symbol::new(&e, "callback");
+        let cb_addr = e.storage().instance().get::<_, Address>(&cb_key);
+
+        // PHASE 2: Acquire lock (RAII guard ensures automatic release)
+        let _guard = Self::acquire_lock(&e);
+
+        // PHASE 3: State update BEFORE external interaction
         e.storage().instance().set(&fee_key, &0_i128);
 
-        // External call: invoke callback if registered
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+        // PHASE 4: External call (with lock held, but guard ensures release on panic)
+        if let Some(cb_addr) = cb_addr {
             let fn_name = Symbol::new(&e, "on_collect");
             let args: Vec<Val> = Vec::from_array(&e, [fees.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
-        Self::release_lock(&e);
+        // Lock automatically released when _guard goes out of scope
         fees
     }
 
@@ -898,22 +923,141 @@ impl CredenceBond {
         Self::check_lock(&e)
     }
 
-    // --- Reentrancy guard helpers ---
+    // ===========================================================================
+    // Reentrancy Guard Implementation
+    // ===========================================================================
+    //
+    // This section implements a panic-safe reentrancy guard using the RAII
+    // (Resource Acquisition Is Initialization) pattern. The guard automatically
+    // releases the lock when dropped, even if a panic occurs.
+    //
+    // ## Security Properties
+    //
+    // 1. **Reentrancy Prevention**: Reentrant calls are detected and rejected
+    //    with ContractError::ReentrancyDetected
+    //
+    // 2. **Panic Safety**: The lock is automatically released on panic via the
+    //    Drop trait, preventing permanently stuck locks
+    //
+    // 3. **Automatic Cleanup**: No manual lock release needed; the compiler
+    //    ensures cleanup when the guard goes out of scope
+    //
+    // ## Usage Pattern
+    //
+    // ```rust
+    // pub fn protected_function(e: Env) -> Result {
+    //     // Phase 1: Read and validate BEFORE acquiring lock
+    //     let data = read_and_validate()?;
+    //     
+    //     // Phase 2: Acquire lock (automatic release on drop)
+    //     let _guard = Self::acquire_lock(&e);
+    //     
+    //     // Phase 3: Update state
+    //     update_state(data);
+    //     
+    //     // Phase 4: External calls
+    //     make_external_call();
+    //     
+    //     // Lock automatically released when _guard goes out of scope
+    //     Ok(())
+    // }
+    // ```
+    //
+    // ## Protected Functions
+    //
+    // - `withdraw_bond`: Withdraws bonded amount with external callback
+    // - `slash_bond`: Slashes bond with external callback
+    // - `collect_fees`: Collects fees with external callback
+    //
+    // See docs/reentrancy.md for detailed documentation.
+    // ===========================================================================
 
-    fn acquire_lock(e: &Env) {
+    /// RAII guard that releases the reentrancy lock on drop.
+    /// 
+    /// This guard ensures the reentrancy lock is released even if a panic
+    /// occurs between lock acquisition and function return. The lock is stored
+    /// in contract instance storage under the key "locked".
+    ///
+    /// # Panic Safety
+    ///
+    /// The `Drop` implementation guarantees the lock is released on all exit
+    /// paths, including:
+    /// - Normal function return
+    /// - Early return via `?` operator
+    /// - Panic during execution
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let _guard = Self::acquire_lock(&e);
+    /// // ... protected code ...
+    /// // Lock automatically released here when _guard is dropped
+    /// ```
+    struct ReentrancyGuard<'a> {
+        env: &'a Env,
+    }
+
+    impl<'a> Drop for ReentrancyGuard<'a> {
+        /// Automatically releases the reentrancy lock when the guard is dropped.
+        ///
+        /// This is called by the Rust compiler when the guard goes out of scope,
+        /// ensuring the lock is always released regardless of how the function exits.
+        fn drop(&mut self) {
+            let key = Symbol::new(self.env, "locked");
+            self.env.storage().instance().set(&key, &false);
+        }
+    }
+
+    /// Acquire the reentrancy lock and return a guard that will automatically
+    /// release it.
+    ///
+    /// This function checks if the lock is currently held and panics with
+    /// `ContractError::ReentrancyDetected` if so. Otherwise, it sets the lock
+    /// to `true` and returns a guard that will set it back to `false` when dropped.
+    ///
+    /// # Returns
+    ///
+    /// A `ReentrancyGuard` that will automatically release the lock when dropped.
+    ///
+    /// # Panics
+    ///
+    /// Panics with `ContractError::ReentrancyDetected` if the lock is already held,
+    /// indicating a reentrancy attempt.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let _guard = Self::acquire_lock(&e);
+    /// // Lock is now held
+    /// // ... perform protected operations ...
+    /// // Lock is automatically released when _guard goes out of scope
+    /// ```
+    fn acquire_lock(e: &Env) -> ReentrancyGuard {
         let key = Symbol::new(e, "locked");
         let locked: bool = e.storage().instance().get(&key).unwrap_or(false);
         if locked {
             panic_with_error!(e, ContractError::ReentrancyDetected);
         }
         e.storage().instance().set(&key, &true);
+        ReentrancyGuard { env: e }
     }
 
-    fn release_lock(e: &Env) {
-        let key = Symbol::new(e, "locked");
-        e.storage().instance().set(&key, &false);
-    }
-
+    /// Check if the reentrancy lock is currently held.
+    ///
+    /// This is primarily used for testing and debugging. In production code,
+    /// use `acquire_lock` which will panic if the lock is held.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the lock is currently held, `false` otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// assert!(!Self::check_lock(&e)); // Lock not held
+    /// let _guard = Self::acquire_lock(&e);
+    /// assert!(Self::check_lock(&e));  // Lock is held
+    /// ```
     fn check_lock(e: &Env) -> bool {
         let key = Symbol::new(e, "locked");
         e.storage().instance().get(&key).unwrap_or(false)
