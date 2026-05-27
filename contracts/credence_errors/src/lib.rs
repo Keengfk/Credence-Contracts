@@ -55,7 +55,11 @@ pub enum ErrorCategory {
 ///   500 - 599 : Delegation
 ///   600 - 699 : Treasury
 ///   700 - 799 : Arithmetic
-#[contracterror]
+// Keep conversions generated, but do not export this utility enum as contract
+// spec metadata. The shared enum has more variants than Soroban's current
+// exported error-enum case vector limit supports, and this crate is not a
+// deployed contract interface.
+#[contracterror(export = false)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ContractError {
@@ -283,6 +287,11 @@ pub enum ContractError {
     /// Contracts: delegation
     AlreadyRevoked = 502,
 
+    /// Delegation expiry timestamp exceeds the maximum allowed lifetime.
+    /// Triggered by: expires_at > now + MAX_DELEGATION_DURATION
+    /// Contracts: delegation
+    DelegationExpiryTooLong = 503,
+
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -395,7 +404,8 @@ impl ErrorExt for ContractError {
 
             ContractError::ExpiryInPast
             | ContractError::DelegationNotFound
-            | ContractError::AlreadyRevoked => ErrorCategory::Delegation,
+            | ContractError::AlreadyRevoked
+            | ContractError::DelegationExpiryTooLong => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -471,6 +481,9 @@ impl ErrorExt for ContractError {
             ContractError::ExpiryInPast => "Delegation expiry must be in the future",
             ContractError::DelegationNotFound => "No delegation found for the given key",
             ContractError::AlreadyRevoked => "Delegation has already been revoked",
+            ContractError::DelegationExpiryTooLong => {
+                "Delegation expiry exceeds the maximum allowed lifetime"
+            }
             ContractError::AmountMustBePositive => "Amount must be strictly positive (> 0)",
             ContractError::ThresholdExceedsSigners => {
                 "Threshold cannot exceed the current signer count"

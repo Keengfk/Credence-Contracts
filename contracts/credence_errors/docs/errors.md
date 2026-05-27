@@ -92,6 +92,7 @@ wire-stable error code instead of an opaque transaction failure.
 | 500 | `ExpiryInPast` | `"expiry must be in the future"` | Delegation expiry is in the past |
 | 501 | `DelegationNotFound` | `"delegation not found"` | No delegation record found |
 | 502 | `AlreadyRevoked` | `"already revoked"` | Delegation already revoked |
+| 503 | `DelegationExpiryTooLong` | `"delegation expiry exceeds maximum duration"` | Delegation expiry exceeds maximum allowed lifetime |
 
 ### Treasury (600-699)
 

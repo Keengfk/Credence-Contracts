@@ -31,6 +31,9 @@ mod tests {
             ContractError::InvalidPenaltyBps,
             ContractError::LeverageExceeded,
             ContractError::UnsupportedToken,
+            ContractError::InvalidBondAmount,
+            ContractError::InvalidBondDuration,
+            ContractError::InvalidNoticePeriod,
             ContractError::DuplicateAttestation,
             ContractError::AttestationNotFound,
             ContractError::AttestationAlreadyRevoked,
@@ -46,6 +49,7 @@ mod tests {
             ContractError::ExpiryInPast,
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
+            ContractError::DelegationExpiryTooLong,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -96,6 +100,9 @@ mod tests {
         assert_eq!(ContractError::InvalidPenaltyBps as u32, 211);
         assert_eq!(ContractError::LeverageExceeded as u32, 212);
         assert_eq!(ContractError::UnsupportedToken as u32, 213);
+        assert_eq!(ContractError::InvalidBondAmount as u32, 214);
+        assert_eq!(ContractError::InvalidBondDuration as u32, 215);
+        assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
     }
 
     #[test]
@@ -123,6 +130,7 @@ mod tests {
         assert_eq!(ContractError::ExpiryInPast as u32, 500);
         assert_eq!(ContractError::DelegationNotFound as u32, 501);
         assert_eq!(ContractError::AlreadyRevoked as u32, 502);
+        assert_eq!(ContractError::DelegationExpiryTooLong as u32, 503);
     }
 
     #[test]
@@ -223,6 +231,26 @@ mod tests {
             ContractError::InvalidPenaltyBps.category(),
             ErrorCategory::Bond
         );
+        assert_eq!(
+            ContractError::LeverageExceeded.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::UnsupportedToken.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::InvalidBondAmount.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::InvalidBondDuration.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::InvalidNoticePeriod.category(),
+            ErrorCategory::Bond
+        );
     }
 
     #[test]
@@ -289,6 +317,10 @@ mod tests {
         );
         assert_eq!(
             ContractError::AlreadyRevoked.category(),
+            ErrorCategory::Delegation
+        );
+        assert_eq!(
+            ContractError::DelegationExpiryTooLong.category(),
             ErrorCategory::Delegation
         );
     }
@@ -358,7 +390,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            50,
+            54,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -831,9 +863,12 @@ mod tests {
     }
 
     // delegation
-    fn mock_delegate(expiry_future: bool) -> Result<(), ContractError> {
+    fn mock_delegate(expiry_future: bool, within_max_duration: bool) -> Result<(), ContractError> {
         if !expiry_future {
             return Err(ContractError::ExpiryInPast);
+        }
+        if !within_max_duration {
+            return Err(ContractError::DelegationExpiryTooLong);
         }
         Ok(())
     }
@@ -854,8 +889,17 @@ mod tests {
 
     #[test]
     fn test_expiry_in_past() {
-        assert_eq!(mock_delegate(false), Err(ContractError::ExpiryInPast));
-        assert!(mock_delegate(true).is_ok());
+        assert_eq!(mock_delegate(false, true), Err(ContractError::ExpiryInPast));
+        assert!(mock_delegate(true, true).is_ok());
+    }
+
+    #[test]
+    fn test_delegation_expiry_too_long() {
+        assert_eq!(
+            mock_delegate(true, false),
+            Err(ContractError::DelegationExpiryTooLong)
+        );
+        assert!(mock_delegate(true, true).is_ok());
     }
 
     #[test]

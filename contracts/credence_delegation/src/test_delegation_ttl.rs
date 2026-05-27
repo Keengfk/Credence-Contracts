@@ -305,7 +305,7 @@ fn test_delegation_ttl_bumped_on_revoke() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 8: TTL is capped at MAX_TTL for very long-lived delegations
+// Test 8: TTL is capped at MAX_TTL for maximum-duration delegations
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -316,8 +316,7 @@ fn test_delegation_ttl_capped_at_max() {
     let delegate = Address::generate(&e);
 
     let now = e.ledger().timestamp();
-    // expires_at far in the future: 10 years
-    let expires_at = now + 10 * 365 * 24 * 3600;
+    let expires_at = now + MAX_DELEGATION_DURATION;
 
     client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
 

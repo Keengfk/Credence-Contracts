@@ -4,7 +4,7 @@ Soroban contract enabling bond owners to delegate attestation and management rig
 
 ## Overview
 
-The `CredenceDelegation` contract stores delegations keyed by `(owner, delegate, DelegationType)`. Each delegation carries an expiry timestamp and can be revoked by the owner at any time.
+The `CredenceDelegation` contract stores delegations keyed by `(owner, delegate, DelegationType)`. Each delegation carries a bounded expiry timestamp and can be revoked by the owner at any time.
 
 ## Types
 
@@ -22,7 +22,7 @@ The `CredenceDelegation` contract stores delegations keyed by `(owner, delegate,
 | owner            | Address         | Bond owner granting delegation   |
 | delegate         | Address         | Address receiving delegated rights |
 | delegation_type  | DelegationType  | Kind of delegation               |
-| expires_at       | u64             | Ledger timestamp when delegation expires |
+| expires_at       | u64             | Ledger timestamp when delegation expires; must be in the allowed lifetime window |
 | revoked          | bool            | Whether the delegation was revoked |
 
 ## Contract Functions
@@ -33,7 +33,11 @@ Set the contract admin. Can only be called once.
 
 ### `delegate(owner, delegate, delegation_type, expires_at) -> Delegation`
 
-Create a delegation. Requires owner authorization. `expires_at` must be a future timestamp. Emits a `delegation_created` event.
+Create a delegation. Requires owner authorization. `expires_at` must be greater than the current ledger timestamp and no later than `now + MAX_DELEGATION_DURATION` (`365 days` by default). Emits a `delegation_created` event.
+
+### `execute_delegated_delegate(owner, delegate, delegation_type, expires_at, payload) -> Delegation`
+
+Create a delegation through a relayed, domain-separated payload. The same expiry bounds as `delegate` apply before nonce consumption, so over-long or already-expired requests cannot create a delegation or burn the owner's nonce.
 
 ### `revoke_delegation(owner, delegate, delegation_type)`
 
@@ -47,6 +51,8 @@ Retrieve a stored delegation. Panics if not found.
 
 Returns `true` if the delegation exists, is not revoked, and has not expired. Returns `false` otherwise (including when no delegation exists).
 
+Delegations expire at the exact `expires_at` timestamp. A record with `expires_at == current_timestamp` is invalid.
+
 ## Events
 
 | Event                | Data        | Emitted when              |
@@ -58,6 +64,8 @@ Returns `true` if the delegation exists, is not revoked, and has not expired. Re
 
 - Only the owner can create or revoke their delegations (`require_auth`).
 - Delegations are time-bound; expired delegations are treated as invalid.
+- Delegation lifetime is capped by `MAX_DELEGATION_DURATION` (`365 days`) to prevent never-expiring management or attestation authority.
+- Owners may revoke expired delegations; the record remains invalid before and after revocation, and the explicit `revoked` flag preserves audit state.
 - Double initialization is rejected.
 - Double revocation is rejected.
 - Each `(owner, delegate, type)` tuple maps to exactly one delegation record.
@@ -86,4 +94,4 @@ cargo test -p credence_delegation
 
 ## Known Simplifications
 
-Expired delegations are not automatically cleaned up from storage. See [known-simplifications.md](known-simplifications.md#8-delegation-expiry-is-not-enforced-on-chain-at-write-time) for details and the production path.
+Expired delegations are invalid and bounded at creation time, but they are not automatically cleaned up from storage. See [known-simplifications.md](known-simplifications.md#8-expired-delegations-are-not-auto-cleaned) for details and the production path.

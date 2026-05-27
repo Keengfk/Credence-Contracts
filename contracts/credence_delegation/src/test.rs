@@ -16,6 +16,22 @@ fn setup() -> (Env, CredenceDelegationClient<'static>) {
     (e, client)
 }
 
+fn delegate_payload(
+    domain: DomainTag,
+    owner: &Address,
+    target: &Address,
+    contract_id: &Address,
+    nonce: u64,
+) -> DelegatedActionPayload {
+    DelegatedActionPayload {
+        domain,
+        owner: owner.clone(),
+        target: target.clone(),
+        contract_id: contract_id.clone(),
+        nonce,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Existing delegation tests
 // ---------------------------------------------------------------------------
@@ -151,6 +167,140 @@ fn test_delegate_with_past_expiry() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
     client.delegate(&owner, &delegate, &DelegationType::Attestation, &500_u64);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #500)")]
+fn test_delegate_rejects_expiry_at_now() {
+    let (e, client) = setup();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &1000_u64);
+}
+
+#[test]
+fn test_delegate_accepts_exact_max_expiry() {
+    let (e, client) = setup();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION;
+
+    let d = client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
+
+    assert_eq!(d.expires_at, expires_at);
+    assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #503)")]
+fn test_delegate_rejects_expiry_over_max() {
+    let (e, client) = setup();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION + 1;
+
+    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #503)")]
+fn test_delegate_rejects_u64_max_expiry() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+
+    client.delegate(&owner, &delegate, &DelegationType::Management, &u64::MAX);
+}
+
+#[test]
+fn test_execute_delegated_delegate_accepts_exact_max_expiry() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION;
+    let payload = delegate_payload(DomainTag::Delegate, &owner, &delegate, &client.address, 0);
+
+    let d = client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Management,
+        &expires_at,
+        &payload,
+    );
+
+    assert_eq!(d.expires_at, expires_at);
+    assert_eq!(client.get_nonce(&owner), 1);
+    assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
+}
+
+#[test]
+fn test_execute_delegated_delegate_rejects_over_max_without_consuming_nonce() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION + 1;
+    let payload = delegate_payload(DomainTag::Delegate, &owner, &delegate, &client.address, 0);
+
+    assert!(client
+        .try_execute_delegated_delegate(
+            &owner,
+            &delegate,
+            &DelegationType::Management,
+            &expires_at,
+            &payload,
+        )
+        .is_err());
+    assert_eq!(client.get_nonce(&owner), 0);
+    assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
+}
+
+#[test]
+fn test_is_valid_delegate_false_at_exact_expiry_boundary() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at);
+    e.ledger().with_mut(|li| {
+        li.timestamp = expires_at;
+    });
+
+    assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
+}
+
+#[test]
+fn test_revoke_delegation_after_expiry_marks_revoked_and_stays_invalid() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
+    e.ledger().with_mut(|li| {
+        li.timestamp = expires_at;
+    });
+
+    assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
+
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Management);
+
+    let d = client.get_delegation(&owner, &delegate, &DelegationType::Management);
+    assert!(d.revoked);
+    assert_eq!(d.expires_at, expires_at);
+    assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
 }
 
 #[test]

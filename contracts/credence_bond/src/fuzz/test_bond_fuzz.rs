@@ -132,7 +132,10 @@ impl BondState {
             .checked_add(amount)
             .ok_or("bonded_amount overflow")?;
 
-        Ok(Self { bonded_amount, ..self })
+        Ok(Self {
+            bonded_amount,
+            ..self
+        })
     }
 
     fn slash(self, amount: i128) -> Result<Self, &'static str> {
@@ -154,7 +157,10 @@ impl BondState {
             new_slashed
         };
 
-        Ok(Self { slashed_amount, ..self })
+        Ok(Self {
+            slashed_amount,
+            ..self
+        })
     }
 
     fn withdraw(self, amount: i128) -> Result<Self, &'static str> {
@@ -175,7 +181,10 @@ impl BondState {
             .checked_sub(amount)
             .ok_or("bonded_amount underflow")?;
 
-        Ok(Self { bonded_amount, ..self })
+        Ok(Self {
+            bonded_amount,
+            ..self
+        })
     }
 }
 

@@ -83,6 +83,14 @@ pub struct CredenceDelegation;
 
 const MAX_NONCE_INVALIDATION_SPAN: u64 = 10_000;
 
+/// Maximum lifetime, in seconds, allowed for a newly created delegation.
+///
+/// A delegation's `expires_at` must satisfy:
+/// `now < expires_at <= now + MAX_DELEGATION_DURATION`.
+/// The default bound is 365 days and prevents effectively never-expiring
+/// delegations such as `u64::MAX`.
+pub const MAX_DELEGATION_DURATION: u64 = 365 * 24 * 60 * 60;
+
 #[contractimpl]
 impl CredenceDelegation {
     /// Initialize the contract with an admin address.
@@ -106,7 +114,10 @@ impl CredenceDelegation {
     // -----------------------------------------------------------------------
 
     /// Create a delegation from owner to delegate with a given type and expiry.
-    /// The owner must be the transaction signer.
+    ///
+    /// The owner must be the transaction signer. `expires_at` must be greater
+    /// than the current ledger timestamp and no later than
+    /// `now + MAX_DELEGATION_DURATION`.
     pub fn delegate(
         e: Env,
         owner: Address,
@@ -117,14 +128,16 @@ impl CredenceDelegation {
         pausable::require_not_paused(&e);
         owner.require_auth();
 
-        if expires_at <= e.ledger().timestamp() {
-            panic_with_error!(&e, ContractError::ExpiryInPast);
-        }
+        Self::validate_delegation_expiry(&e, expires_at);
 
         Self::store_delegation(&e, owner, delegate, delegation_type, expires_at)
     }
 
     /// Revoke an existing delegation. Only the owner can revoke.
+    ///
+    /// Expired delegations may still be revoked so the stored audit state can
+    /// reflect both facts: expired delegations are invalid before revocation,
+    /// and remain invalid after the `revoked` flag is set.
     pub fn revoke_delegation(
         e: Env,
         owner: Address,
@@ -167,7 +180,9 @@ impl CredenceDelegation {
     /// * `nonce`      — consumed and incremented on success
     ///
     /// `owner.require_auth()` is still called so the Soroban auth engine
-    /// validates the underlying transaction signature.
+    /// validates the underlying transaction signature. The same expiry bounds
+    /// as [`Self::delegate`] apply before nonce consumption, so invalid
+    /// expiries cannot burn a relayed payload's nonce.
     pub fn execute_delegated_delegate(
         e: Env,
         owner: Address,
@@ -182,12 +197,10 @@ impl CredenceDelegation {
         // Domain-separated payload verification
         domain::verify_payload(&e, &payload, DomainTag::Delegate, &owner, &delegate);
 
+        Self::validate_delegation_expiry(&e, expires_at);
+
         // Nonce consumption (replay prevention)
         nonce::consume_nonce(&e, &owner, payload.nonce);
-
-        if expires_at <= e.ledger().timestamp() {
-            panic_with_error!(&e, ContractError::ExpiryInPast);
-        }
 
         Self::store_delegation(&e, owner, delegate, delegation_type, expires_at)
     }
@@ -264,6 +277,9 @@ impl CredenceDelegation {
     }
 
     /// Check whether a delegate is currently valid (not revoked, not expired).
+    ///
+    /// Delegations expire exactly at `expires_at`: the record is valid only
+    /// while `e.ledger().timestamp() < expires_at`.
     pub fn is_valid_delegate(
         e: Env,
         owner: Address,
@@ -360,6 +376,18 @@ impl CredenceDelegation {
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
+
+    fn validate_delegation_expiry(e: &Env, expires_at: u64) {
+        let now = e.ledger().timestamp();
+        if expires_at <= now {
+            panic_with_error!(e, ContractError::ExpiryInPast);
+        }
+
+        let max_expires_at = now.saturating_add(MAX_DELEGATION_DURATION);
+        if expires_at > max_expires_at {
+            panic_with_error!(e, ContractError::DelegationExpiryTooLong);
+        }
+    }
 
     fn store_delegation(
         e: &Env,

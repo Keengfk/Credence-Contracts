@@ -13,7 +13,7 @@ The core object representing a permission grant.
 | `owner` | `Address` | The account granting the permission. |
 | `delegate` | `Address` | The account receiving the permission. |
 | `delegation_type` | `DelegationType` | The scope of the grant (Attestation or Management). |
-| `expires_at` | `u64` | Ledger timestamp when the permission automatically expires. |
+| `expires_at` | `u64` | Ledger timestamp when the permission automatically expires. Must be in the bounded lifetime window. |
 | `revoked` | `bool` | Manual override flag to cancel permission before expiry. |
 
 ### `DelegationType` (Enum)
@@ -42,8 +42,14 @@ Sets the contract administrator.
 Creates a new delegation record.
 * **Parameters**: `owner`, `delegate`, `delegation_type`, `expires_at`.
 * **Authorization**: `owner.require_auth()`.
-* **Validation**: `expires_at` must be a future timestamp.
+* **Validation**: `expires_at` must be greater than the current ledger timestamp and no later than `now + MAX_DELEGATION_DURATION` (`365 days` by default).
 * **Logic**: Overwrites any existing delegation of the same type.
+
+### `execute_delegated_delegate(...)`
+Creates a delegation through a relayed, domain-separated payload.
+* **Parameters**: `owner`, `delegate`, `delegation_type`, `expires_at`, `payload`.
+* **Authorization**: `owner.require_auth()` and a `DomainTag::Delegate` payload bound to the current contract address.
+* **Validation**: Applies the same expiry bounds as `delegate(...)` before nonce consumption, so an invalid over-long expiry cannot burn the owner's nonce.
 
 ### `revoke_delegation(...)`
 Cancels a generic delegation.
@@ -64,7 +70,7 @@ A specific helper function to revoke permissions specifically of the `Attestatio
 
 ### `is_valid_delegate(...)`
 The primary check for other contracts to use.
-* **Logic**: Returns `true` only if the record exists, `revoked` is false, and the current ledger timestamp is less than `expires_at`.
+* **Logic**: Returns `true` only if the record exists, `revoked` is false, and the current ledger timestamp is strictly less than `expires_at`. At `timestamp == expires_at`, the delegation is expired and invalid.
 
 ### `get_attestation_status(...)`
 A high-level check for the state of a specific attestation.
@@ -82,5 +88,14 @@ Returns the raw `Delegation` struct. Panics if no record is found.
 | :--- | :--- |
 | `already initialized` | Attempted to re-run the `initialize` function. |
 | `expiry must be in the future` | The `expires_at` provided is $\le$ current ledger timestamp. |
+| `delegation expiry exceeds maximum duration` | The `expires_at` provided is greater than `now + MAX_DELEGATION_DURATION`. |
 | `delegation not found` | Attempted to get or revoke a non-existent record. |
 | `already revoked` | Attempted to revoke a delegation that is already in a revoked state. |
+
+## Expiry Security Notes
+
+`MAX_DELEGATION_DURATION` is currently `365 days`. This rejects unbounded
+delegations such as `u64::MAX` while preserving normal short-lived delegation
+flows. Expired delegations are invalid even if they have not been manually
+revoked, and an owner may still revoke an expired record to preserve explicit
+audit state.

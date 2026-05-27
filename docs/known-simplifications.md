@@ -90,13 +90,13 @@ Each entry describes what is simplified, why, and what a production implementati
 
 ---
 
-## 8. Delegation Expiry is Not Enforced On-Chain at Write Time
+## 8. Expired Delegations Are Not Auto-Cleaned
 
 **Where:** `contracts/credence_delegation/src/lib.rs`
 
-**What:** When `delegate()` is called, `expires_at` must be a future timestamp. However, expired delegations are not automatically cleaned up — they remain in storage indefinitely. `is_valid_delegate()` correctly returns `false` for expired delegations, but the storage entry persists.
+**What:** When `delegate()` or `execute_delegated_delegate()` is called, `expires_at` must be a future timestamp and no later than `now + MAX_DELEGATION_DURATION`. However, expired delegations are not automatically cleaned up — they remain in storage until TTL archival or an explicit future cleanup path. `is_valid_delegate()` correctly returns `false` for expired delegations, but the storage entry can persist.
 
-**Impact:** Storage grows unboundedly as expired delegations accumulate. There is no on-chain garbage collection.
+**Impact:** Expired delegations cannot grant authority, but storage can still grow as expired records accumulate. There is no explicit on-chain garbage collection.
 
 **Production path:** Add a `cleanup_expired(owner, delegate, delegation_type)` function that anyone can call to remove expired entries and reclaim storage rent. Alternatively, use Soroban's TTL-based storage expiry for delegation entries. See [delegation.md](delegation.md).
 
