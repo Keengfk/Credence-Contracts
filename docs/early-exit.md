@@ -1,39 +1,82 @@
 # Early Exit Penalty
 
-Penalty charged when users withdraw before the lock-up period ends. Penalty is configurable and transferred to the protocol treasury.
+Penalty charged when users withdraw before the lock-up period ends.
+Penalty is configurable and attributed to the protocol treasury.
 
 ## Configuration
 
-- **treasury**: Address that receives penalty amounts.
-- **early_exit_penalty_bps**: Rate in basis points (e.g. 500 = 5%). Must be ≤ 10000.
+| Field | Description |
+|-------|-------------|
+| `treasury` | Address that receives penalty amounts. |
+| `penalty_bps` | Rate in basis points. **Must be in `[0, 10 000]`** (0 % – 100 %). Values above 10 000 are rejected with `ContractError::InvalidPenaltyBps` (211). |
 
 Set via `set_early_exit_config(admin, treasury, penalty_bps)`. Admin-only.
 
+### Config-changed event
+
+Every successful call to `set_early_exit_config` emits `"early_exit_cfg_set"` with:
+
+```
+(old_penalty_bps: u32, new_penalty_bps: u32, treasury: Address)
+```
+
+`old_penalty_bps` is `0` when no previous configuration existed.
+
 ## Penalty Formula
 
-`penalty = (amount * penalty_bps / 10000) * (remaining_time / total_duration)`
+```
+penalty = (amount × penalty_bps / 10_000) × (remaining_time / total_duration)
+```
 
-- **remaining_time**: Time left until lock-up end.
-- **total_duration**: Bond duration at creation.
+- **remaining_time** — seconds left until lock-up end (`end - now`).
+- **total_duration** — bond duration at creation.
 
-So penalty is proportional to how much of the lock period remains.
+The penalty is proportional to the fraction of the lock period that remains.
+
+### Clamping guarantee
+
+The computed penalty is **always clamped to `[0, amount]`**.  
+This means:
+- The user's net withdrawal (`amount - penalty`) is always ≥ 0.
+- An operator cannot accidentally configure a penalty that exceeds 100 % of the
+  withdrawn amount, even if `calculate_penalty` is called directly with a large
+  `penalty_bps` value.
+
+## Validation rules
+
+| Check | Error |
+|-------|-------|
+| `penalty_bps > 10_000` | `ContractError::InvalidPenaltyBps` (211) |
+| Config not set when `withdraw_early` is called | `ContractError::EarlyExitConfigNotSet` (210) |
 
 ## Functions
 
-### withdraw_early(amount)
+### `set_early_exit_config(admin, treasury, penalty_bps)`
 
-Withdraws `amount` before lock-up end. Applies penalty; penalty is attributed to treasury (in a full implementation, token transfer would send `amount - penalty` to user and `penalty` to treasury). Emits `early_exit_penalty` event with (identity, withdraw_amount, penalty_amount, treasury).
+Stores the early-exit configuration. Rejects `penalty_bps > 10_000`.
+Emits `"early_exit_cfg_set"`.
 
-### withdraw(amount)
+### `withdraw_early(amount)`
 
-Use after lock-up or after notice period for rolling bonds. No penalty.
+Withdraws `amount` before lock-up end. Computes and clamps the penalty,
+then emits `"early_exit_penalty"` with `(identity, amount, penalty, treasury)`.
+In a full implementation the token transfer sends `amount - penalty` to the user
+and `penalty` to the treasury.
+
+### `withdraw(amount)`
+
+Use after lock-up or after the rolling-bond notice period. No penalty.
 
 ## Events
 
-- **early_exit_penalty**: (identity, withdraw_amount, penalty_amount, treasury)
+| Event | Payload |
+|-------|---------|
+| `"early_exit_cfg_set"` | `(old_penalty_bps, new_penalty_bps, treasury)` |
+| `"early_exit_penalty"` | `(identity, withdraw_amount, penalty_amount, treasury)` |
 
 ## Security
 
-- Penalty capped by amount and rate; no overflow in calculation.
-- Config can only be set by admin.
+- `penalty_bps` is validated at write time — no invalid value can ever be stored.
+- Penalty is clamped in `calculate_penalty` as a defence-in-depth measure.
+- Config can only be set by the admin (`admin.require_auth()`).
 - Withdrawing after lock-up must use `withdraw`, not `withdraw_early`.

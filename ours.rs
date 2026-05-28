@@ -88,11 +88,18 @@ impl CredenceBond {
         e.storage().instance().set(&DataKey::Admin, &admin);
     }
 
-    /// Set early exit penalty config. Only admin should call.
+    /// Set early-exit penalty configuration. Only the admin may call this.
     ///
-    /// Errors:
-    /// - `ContractError::NotInitialized` (1) when the contract admin is not set
-    /// - `ContractError::NotAdmin` (100) when `admin` is not the stored admin
+    /// `penalty_bps` is the penalty rate in basis points where 10 000 = 100 %.
+    /// Values outside `[0, 10_000]` are rejected.
+    ///
+    /// # Errors
+    /// - `ContractError::NotInitialized` (1) — contract admin not set yet
+    /// - `ContractError::NotAdmin` (100) — caller is not the stored admin
+    /// - `ContractError::InvalidPenaltyBps` (211) — `penalty_bps > 10_000`
+    ///
+    /// # Events
+    /// Emits `"early_exit_cfg_set"` with `(old_penalty_bps, new_penalty_bps, treasury)`.
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
         admin.require_auth();
         let stored_admin: Address = e
@@ -490,14 +497,17 @@ impl CredenceBond {
 
     /// Withdraw before lock-up end; applies early exit penalty and transfers penalty to treasury.
     ///
-    /// Authority: stored bond owner (`bond.identity`) must authorize this call.
-    /// Net amount to user = amount - penalty. Use when lock-up has not yet ended.
+    /// Withdraw before lock-up end; applies a time-decayed penalty.
     ///
-    /// Errors:
+    /// Net amount to user = `amount - penalty`.
+    /// The penalty is **clamped** to `amount` so the net is always ≥ 0.
+    ///
+    /// # Errors
     /// - `ContractError::BondNotFound` (200)
     /// - `ContractError::SlashExceedsBond` (203)
     /// - `ContractError::InsufficientBalance` (202)
-    /// - `ContractError::LockupNotExpired` (204)
+    /// - `ContractError::LockupNotExpired` (204) — bond already past its end
+    /// - `ContractError::EarlyExitConfigNotSet` (210) — admin never called `set_early_exit_config`
     /// - `ContractError::Underflow` (701)
     pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
@@ -947,3 +957,6 @@ mod test_replay_prevention;
 
 #[cfg(test)]
 mod security;
+
+#[cfg(test)]
+mod test_early_exit_bounds;
