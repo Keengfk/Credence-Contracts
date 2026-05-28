@@ -286,6 +286,11 @@ dependencies = [
 [[package]]
 name = "credence_bond"
 version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "credence_math",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "credence_delegation"
