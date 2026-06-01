@@ -294,3 +294,22 @@ cargo test -p admin
 - Test role assignments
 - Configure monitoring for admin events
 - Document admin procedures and responsibilities
+
+## Two-Step Admin Transfer
+
+Admin rotation uses a secure two-step flow with a 24-hour timelock:
+
+### propose_admin(current_admin, proposed)
+- Only the current admin may call this
+- Rejects if proposed == current admin
+- Sets a 24-hour timelock before acceptance is allowed
+
+### accept_admin(new_admin)
+- Only the pending admin may call this
+- Reverts if called before the 24-hour timelock elapses
+- On success: new admin is stored, pending admin is cleared
+
+### Security guarantees
+- Fat-finger protection: wrong address cannot self-accept
+- Timelock: gives time to cancel if admin is compromised
+- No single call can hijack admin

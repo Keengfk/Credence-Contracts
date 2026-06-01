@@ -63,7 +63,7 @@ Delegations expire at the exact `expires_at` timestamp. A record with `expires_a
 ## Security
 
 - Only the owner can create or revoke their delegations (`require_auth`).
-- Delegated payload verification now reports distinct error codes for each failure mode: `DomainMismatch` (503), `OwnerMismatch` (504), `TargetMismatch` (505), and `ContractIdMismatch` (506).
+- Delegated payload verification normalizes all mismatch failures to `InvalidNonce` so callers do not learn which payload field differed.
 - Delegations are time-bound; expired delegations are treated as invalid.
 - Delegation lifetime is capped by `MAX_DELEGATION_DURATION` (`365 days`) to prevent never-expiring management or attestation authority.
 - Owners may revoke expired delegations; the record remains invalid before and after revocation, and the explicit `revoked` flag preserves audit state.

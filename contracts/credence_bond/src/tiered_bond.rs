@@ -1,29 +1,46 @@
+//! Tiered Bond System
+//!
+//! Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
+
 use crate::BondTier;
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::Env;
 
-const TIER_BRONZE_MAX: i128 = 1_000;
-const TIER_SILVER_MAX: i128 = 5_000;
-const TIER_GOLD_MAX: i128 = 20_000;
+pub const TIER_BRONZE_MAX: i128 = 1_000_000_000_000_000_000_000;
+pub const TIER_SILVER_MAX: i128 = 5_000_000_000_000_000_000_000;
+pub const TIER_GOLD_MAX: i128 = 20_000_000_000_000_000_000_000;
 
-pub fn get_tier_for_amount(amount: i128) -> BondTier {
-    match amount {
-        x if x < 0 => BondTier::Bronze,
-        x if x < TIER_BRONZE_MAX => BondTier::Bronze,
-        x if x < TIER_SILVER_MAX => BondTier::Silver,
-        x if x < TIER_GOLD_MAX => BondTier::Gold,
-        _ => BondTier::Platinum,
+#[must_use]
+pub fn get_tier_for_amount(e: &Env, amount: i128) -> BondTier {
+    let thresholds = e
+        .storage()
+        .instance()
+        .get::<_, crate::TierThresholds>(&crate::DataKey::TierThresholds)
+        .unwrap_or_else(|| crate::TierThresholds {
+            bronze_max: TIER_BRONZE_MAX,
+            silver_max: TIER_SILVER_MAX,
+            gold_max: TIER_GOLD_MAX,
+        });
+
+    if amount < thresholds.bronze_max {
+        BondTier::Bronze
+    } else if amount < thresholds.silver_max {
+        BondTier::Silver
+    } else if amount < thresholds.gold_max {
+        BondTier::Gold
+    } else {
+        BondTier::Platinum
     }
 }
 
 pub fn emit_tier_change_if_needed(
     e: &Env,
-    identity: &Address,
+    identity: &soroban_sdk::Address,
     old_tier: BondTier,
     new_tier: BondTier,
 ) {
-    if old_tier != new_tier {
+    if core::mem::discriminant(&old_tier) != core::mem::discriminant(&new_tier) {
         e.events().publish(
-            (Symbol::new(e, "tier_changed"),),
+            (soroban_sdk::Symbol::new(e, "tier_changed"),),
             (identity.clone(), new_tier),
         );
     }

@@ -10,6 +10,7 @@ mod weighted_attestation;
 pub mod types;
 
 use credence_errors::ContractError;
+use timelock;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, String, Symbol, Val, Vec,
 };
@@ -60,6 +61,10 @@ pub enum DataKey {
     AttesterStake(Address),
     /// Global config for weighted attestation computation.
     WeightConfig,
+    /// Pending admin address for two-step ownership transfer.
+    PendingAdmin,
+    /// Timelock ETA for pending admin transfer.
+    AdminTransferEta,
 }
 
 // Storage TTL policy constants. Tuned for maximum bond durations and long-lived
@@ -156,6 +161,27 @@ impl CredenceBond {
     ///
     /// # Events
     /// Emits `"early_exit_cfg_set"` with `(old_penalty_bps, new_penalty_bps, treasury)`.
+    pub fn propose_admin(e: Env, current_admin: Address, proposed: Address) {
+        current_admin.require_auth();
+        let stored: Address = e.storage().instance().get(&DataKey::Admin).unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored != current_admin { panic_with_error!(e, ContractError::NotAdmin); }
+        if proposed == current_admin { panic_with_error!(e, ContractError::AdminUnchanged); }
+        let eta: u64 = e.ledger().timestamp() + timelock::min_delay_seconds();
+        e.storage().instance().set(&DataKey::PendingAdmin, &proposed);
+        e.storage().instance().set(&DataKey::AdminTransferEta, &eta);
+    }
+
+    pub fn accept_admin(e: Env, new_admin: Address) {
+        new_admin.require_auth();
+        let pending: Address = e.storage().instance().get(&DataKey::PendingAdmin).unwrap_or_else(|| panic_with_error!(e, ContractError::NoPendingAdmin));
+        if pending != new_admin { panic_with_error!(e, ContractError::NotAdmin); }
+        let eta: u64 = e.storage().instance().get(&DataKey::AdminTransferEta).unwrap_or_else(|| panic_with_error!(e, ContractError::NoPendingAdmin));
+        if !timelock::is_ready(eta, e.ledger().timestamp()) { panic_with_error!(e, ContractError::TimelockNotReady); }
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+        e.storage().instance().remove(&DataKey::AdminTransferEta);
+    }
+
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
         admin.require_auth();
         let stored_admin: Address = e

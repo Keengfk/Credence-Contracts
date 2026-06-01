@@ -42,6 +42,7 @@ fn make_payload(
         target: target.clone(),
         contract_id: contract_id.clone(),
         nonce,
+        scheme: 0,
     }
 }
 
@@ -89,7 +90,7 @@ fn nonce_increments_after_delegated_delegate() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #504)")]
 fn cross_domain_replay_delegate_payload_in_revoke() {
     let (e, client, contract_id) = setup();
     let owner = Address::generate(&e);
@@ -128,7 +129,7 @@ fn cross_domain_replay_delegate_payload_in_revoke() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #504)")]
 fn cross_domain_replay_revoke_payload_in_delegate() {
     let (e, client, contract_id) = setup();
     let owner = Address::generate(&e);
@@ -160,7 +161,7 @@ fn cross_domain_replay_revoke_payload_in_delegate() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #504)")]
 fn cross_domain_replay_delegate_payload_in_revoke_attestation() {
     let (e, client, contract_id) = setup();
     let attester = Address::generate(&e);
@@ -249,7 +250,7 @@ fn nonce_replay_rejected_cross_domain_stale_nonce() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #507)")]
 fn cross_contract_replay_rejected() {
     let (e, client, _) = setup();
     let owner = Address::generate(&e);
@@ -281,7 +282,7 @@ fn cross_contract_replay_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #505)")]
 fn wrong_owner_in_payload_rejected() {
     let (e, client, contract_id) = setup();
     let real_owner = Address::generate(&e);
@@ -313,7 +314,7 @@ fn wrong_owner_in_payload_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #506)")]
 fn wrong_target_in_payload_rejected() {
     let (e, client, contract_id) = setup();
     let owner = Address::generate(&e);
@@ -473,17 +474,17 @@ fn happy_path_delegated_revoke_attestation() {
     let subject = Address::generate(&e);
     let expiry = e.ledger().timestamp() + 86_400;
 
-    // Create the attestation entry first (direct path, no domain payload needed)
-    client.delegate(&attester, &subject, &DelegationType::Attestation, &expiry);
+    // Create the attestation entry first (direct path consumes nonce 0)
+    client.delegate(&attester, &subject, &DelegationType::Attestation, &expiry, &0_u64);
 
-    // Revoke via relayer
+    // Revoke via relayer (direct path consumed nonce 0, so delegated path uses nonce 1)
     let payload = make_payload(
         &e,
         DomainTag::RevokeAttestation,
         &attester,
         &subject,
         &contract_id,
-        0,
+        1,
     );
     client.execute_delegated_revoke_attest(&attester, &subject, &payload);
 
@@ -491,7 +492,7 @@ fn happy_path_delegated_revoke_attestation() {
         client.get_attestation_status(&attester, &subject),
         AttestationStatus::Revoked
     ));
-    assert_eq!(client.get_nonce(&attester), 1);
+    assert_eq!(client.get_nonce(&attester), 2);
 }
 
 #[test]

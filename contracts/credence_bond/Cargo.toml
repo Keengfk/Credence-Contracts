@@ -11,11 +11,19 @@ edition = "2021"
 autotests = false
 
 [lib]
-crate-type = ["lib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }
+timelock = { path = "../timelock" }
 soroban-sdk = { version = "22.0", features = ["testutils"] }
 
 [dev-dependencies]
 proptest = "1.11.0"
+
+[features]
+default = []
+fork-ours = []
+fork-base = []
+fork-theirs = []
+fork-canonical = []

@@ -34,6 +34,12 @@ mod tests {
             ContractError::InvalidBondAmount,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
+            ContractError::BondAlreadyExists,
+            ContractError::DomainMismatch,
+            ContractError::OwnerMismatch,
+            ContractError::TargetMismatch,
+            ContractError::ContractIdMismatch,
+            ContractError::SignatureExpired,
             ContractError::DuplicateAttestation,
             ContractError::AttestationNotFound,
             ContractError::AttestationAlreadyRevoked,
@@ -50,6 +56,10 @@ mod tests {
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
             ContractError::DelegationExpiryTooLong,
+            ContractError::UnknownScheme,
+            ContractError::VerifierAlreadyRegistered,
+            ContractError::VerifierNotRegistered,
+            ContractError::VerificationFailed,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -390,7 +400,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            54,
+            64,
             "Update all_variants() and this count when adding new errors"
         );
     }

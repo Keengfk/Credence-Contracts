@@ -28,7 +28,7 @@ pub fn can_withdraw_after_notice(
 /// Call when period has ended and bond is rolling.
 pub fn apply_renewal(bond: &mut IdentityBond, new_start: u64) {
     bond.bond_start = new_start;
-    bond.withdrawal_requested_at = 0; // reset withdrawal request on renewal
+    bond.withdrawal_requested_at = 0;
 }
 
 /// Returns the period end timestamp (start + duration) using saturating add.
