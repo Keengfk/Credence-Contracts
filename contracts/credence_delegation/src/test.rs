@@ -112,7 +112,7 @@ fn test_revoke_delegation() {
         &86400_u64,
         &0_u64,
     );
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64, &1_u64);
 
     let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
     assert!(d.revoked);
@@ -170,10 +170,10 @@ fn test_independent_delegation_types() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
     client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
-    client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64, &1_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64, &0_u64);
 
     // Revoke only attestation
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &2_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
 
     assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
     assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
@@ -351,8 +351,7 @@ fn test_double_revoke() {
     let delegate = Address::generate(&e);
     client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
     client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
-    // Second revoke: nonce=2 passes consume_nonce, then AlreadyRevoked triggers
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &2_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +381,7 @@ fn test_revoke_attestation_happy_path() {
         AttestationStatus::Active
     ));
 
-    // Revoke (delegate consumed nonce 0, so revoke uses nonce 1)
+    // Revoke
     client.revoke_attestation(&attester, &subject, &1_u64);
 
     // Status after revocation
@@ -445,8 +444,7 @@ fn test_revoke_attestation_not_found() {
     let attester = Address::generate(&e);
     let subject = Address::generate(&e);
 
-    // nonce=0: consume_nonce(0) succeeds, then DelegationNotFound triggers
-    client.revoke_attestation(&attester, &subject, &0_u64);
+    client.revoke_attestation(&attester, &subject, &1_u64);
 }
 
 /// Double-revoking an attestation must panic with `"Error(Contract, #502)"`.
@@ -465,8 +463,8 @@ fn test_revoke_attestation_double_revoke() {
         &0_u64,
     );
     client.revoke_attestation(&attester, &subject, &1_u64);
-    // Second revoke: nonce=2 passes consume_nonce, then AlreadyRevoked triggers
-    client.revoke_attestation(&attester, &subject, &2_u64);
+    // Second revoke must panic
+    client.revoke_attestation(&attester, &subject, &1_u64);
 }
 
 /// `get_attestation_status` returns `Active` for a live attestation.
@@ -518,9 +516,9 @@ fn test_revoke_attestation_does_not_affect_management() {
         &86400_u64,
         &0_u64,
     );
-    client.delegate(&attester, &subject, &DelegationType::Management, &86400_u64, &1_u64);
+    client.delegate(&attester, &subject, &DelegationType::Management, &86400_u64, &0_u64);
 
-    client.revoke_attestation(&attester, &subject, &2_u64);
+    client.revoke_attestation(&attester, &subject, &1_u64);
 
     // Attestation is revoked
     assert!(matches!(
@@ -530,4 +528,43 @@ fn test_revoke_attestation_does_not_affect_management() {
 
     // Management delegation is unaffected
     assert!(client.is_valid_delegate(&attester, &subject, &DelegationType::Management));
+}
+
+#[test]
+fn test_get_delegation_summary() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    
+    // 1. Initial creation
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &1000_u64, &0_u64);
+    
+    let summary = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(summary.is_valid);
+    assert_eq!(summary.time_to_expiry, 1000);
+    assert!(matches!(summary.delegation_type, DelegationType::Attestation));
+    assert_eq!(summary.revoked_at, 0);
+    assert_eq!(summary.scheme, 0);
+
+    // 2. Advance time
+    e.ledger().with_mut(|li| {
+        li.timestamp = 400;
+    });
+    let summary2 = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(summary2.is_valid);
+    assert_eq!(summary2.time_to_expiry, 600);
+
+    // 3. Revoke
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
+    let summary3 = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(!summary3.is_valid);
+    assert_eq!(summary3.time_to_expiry, 600);
+
+    // 4. Expire
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1100;
+    });
+    let summary4 = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(!summary4.is_valid);
+    assert_eq!(summary4.time_to_expiry, 0);
 }

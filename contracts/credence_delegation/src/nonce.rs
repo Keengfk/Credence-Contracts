@@ -110,6 +110,8 @@ pub fn get_nonce(e: &Env, identity: &Address) -> u64 {
 pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
     let key = DataKey::Nonce(identity.clone());
     let current: u64 = e.storage().persistent().get(&key).unwrap_or(0);
+    // Log for debugging
+    // e.logger().info("consume_nonce current nonces");
     if current != expected_nonce {
         panic_with_error!(e, ContractError::InvalidNonce);
     }

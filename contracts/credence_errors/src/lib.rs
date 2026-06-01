@@ -351,38 +351,6 @@ pub enum ContractError {
 
     /// Unknown or unsupported signature scheme tag.
     UnknownScheme = 508,
-
-    /// Verifier already registered for the given scheme tag.
-    VerifierAlreadyRegistered = 509,
-
-    /// No verifier registered for the given scheme tag.
-    VerifierNotRegistered = 510,
-
-    /// Signature verification failed for the given scheme and payload.
-    VerificationFailed = 511,
-
-    /// Unknown or unsupported signature scheme tag.
-    /// Contracts: delegation
-    /// Wire-stable: do not renumber this error code.
-    UnknownScheme = 508,
-
-    /// A verifier is already registered for the given scheme tag.
-    /// Contracts: delegation
-    /// Wire-stable: do not renumber this error code.
-    VerifierAlreadyRegistered = 509,
-
-    /// No verifier is registered for the given scheme tag.
-    /// Contracts: delegation
-    /// Wire-stable: do not renumber this error code.
-    VerifierNotRegistered = 510,
-
-    /// Signature verification failed for the given scheme and payload.
-    /// Contracts: delegation
-    /// Wire-stable: do not renumber this error code.
-    VerificationFailed = 511,
-
-    /// Unknown or unsupported signature scheme tag.
-    UnknownScheme = 508,
     /// Verifier already registered for the given scheme tag.
     VerifierAlreadyRegistered = 509,
     /// No verifier registered for the given scheme tag.
@@ -516,10 +484,6 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationNotFound
             | ContractError::AlreadyRevoked
             | ContractError::DelegationExpiryTooLong
-            | ContractError::DomainMismatch
-            | ContractError::OwnerMismatch
-            | ContractError::TargetMismatch
-            | ContractError::ContractIdMismatch
             | ContractError::UnknownScheme
             | ContractError::VerifierAlreadyRegistered
             | ContractError::VerifierNotRegistered
