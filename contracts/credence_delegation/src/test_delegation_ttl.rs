@@ -74,7 +74,7 @@ fn test_delegation_ttl_set_on_write() {
     let now = e.ledger().timestamp();
     let expires_at = now + 30 * 24 * 3600;
 
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
 
     let key = DataKey::Delegation(owner.clone(), delegate.clone(), DelegationType::Attestation);
     let ttl = delegation_ttl(&e, &contract_id, &key);
@@ -101,7 +101,7 @@ fn test_delegation_ttl_refreshed_on_get() {
     let now = e.ledger().timestamp();
     let expires_at = now + 60 * 24 * 3600; // 60 days
 
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
 
     let key = DataKey::Delegation(owner.clone(), delegate.clone(), DelegationType::Attestation);
     let ttl_after_write = delegation_ttl(&e, &contract_id, &key);
@@ -135,7 +135,7 @@ fn test_delegation_ttl_refreshed_on_is_valid() {
     let now = e.ledger().timestamp();
     let expires_at = now + 30 * 24 * 3600;
 
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
 
     let key = DataKey::Delegation(owner.clone(), delegate.clone(), DelegationType::Attestation);
 
@@ -290,11 +290,11 @@ fn test_delegation_ttl_bumped_on_revoke() {
     let now = e.ledger().timestamp();
     let expires_at = now + 30 * 24 * 3600;
 
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
 
     advance_time(&e, &contract_id, 5 * 24 * 3600);
 
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &0_u64);
 
     let key = DataKey::Delegation(owner.clone(), delegate.clone(), DelegationType::Attestation);
     let ttl = delegation_ttl(&e, &contract_id, &key);
@@ -318,7 +318,7 @@ fn test_delegation_ttl_capped_at_max() {
     let now = e.ledger().timestamp();
     let expires_at = now + MAX_DELEGATION_DURATION;
 
-    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at, &0_u64);
 
     let key = DataKey::Delegation(owner.clone(), delegate.clone(), DelegationType::Management);
     let ttl = delegation_ttl(&e, &contract_id, &key);

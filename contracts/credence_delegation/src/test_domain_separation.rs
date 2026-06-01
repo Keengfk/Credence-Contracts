@@ -474,7 +474,7 @@ fn happy_path_delegated_revoke_attestation() {
     let expiry = e.ledger().timestamp() + 86_400;
 
     // Create the attestation entry first (direct path, no domain payload needed)
-    client.delegate(&attester, &subject, &DelegationType::Attestation, &expiry);
+    client.delegate(&attester, &subject, &DelegationType::Attestation, &expiry, &0_u64);
 
     // Revoke via relayer
     let payload = make_payload(
