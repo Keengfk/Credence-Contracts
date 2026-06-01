@@ -88,6 +88,7 @@ impl CredenceBond {
     /// Errors:
     /// - `ContractError::AlreadyInitialized` if called more than once.
     pub fn initialize(e: Env, admin: Address) {
+        // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
     }
@@ -161,6 +162,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
+        // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
         let bond_start = e.ledger().timestamp();
 
@@ -209,6 +211,7 @@ impl CredenceBond {
         attestation_data: String,
         nonce: u64,
     ) -> Attestation {
+        // auth: tree shape [Attester] -> [Bond::add_attestation]; may be delegated.
         attester.require_auth();
 
         let is_authorized = e
@@ -484,6 +487,7 @@ impl CredenceBond {
 
     /// Withdraw the full bonded amount with a reentrancy guard.
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
+        // auth: tree shape [Identity] -> [Bond::withdraw_bond]; may be delegated.
         identity.require_auth();
         Self::acquire_lock(&e);
 
@@ -548,6 +552,7 @@ impl CredenceBond {
 
     /// Slash a portion of the bond with a reentrancy guard.
     pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
+        // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
         Self::acquire_lock(&e);
 

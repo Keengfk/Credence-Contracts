@@ -1,6 +1,6 @@
 //! Storage migration utilities for IdentityBond
-use soroban_sdk::{Env, storage::InstanceStorage};
-use crate::ours::{IdentityBond, DataKey};
+use soroban_sdk::Env;
+use crate::{IdentityBond, DataKey};
 
 /// Perform lazy migration of IdentityBond storage from v1 to v2 format.
 ///
@@ -19,7 +19,7 @@ pub fn migrate_v1_to_v2(e: &Env) {
     // there. Here we simply ensure the storage entry for the generic key is
     // upgraded if it exists.
     let key = DataKey::Bond; // Note: generic version used by get_identity_state
-    if let Some(old_bond) = e.storage().instance().get::<IdentityBond>(&key) {
+    if let Some(old_bond) = e.storage().instance().get::<_, IdentityBond>(&key) {
         // Write it back – the serialization will now include the new fields
         // with default values.
         e.storage().instance().set(&key, &old_bond);
