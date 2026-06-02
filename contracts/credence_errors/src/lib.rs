@@ -377,11 +377,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     VerificationFailed = 507,
 
-    // --- Delegation mismatch errors (504-506) ---
-    DomainMismatch = 504,
-    OwnerMismatch = 505,
-    TargetMismatch = 506,
-    ContractIdMismatch = 507,
+    // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
+    // Codes match the note above; kept distinct from the delegation
+    // scheme/verifier errors (504-507) to avoid duplicate discriminants.
+    DomainMismatch = 218,
+    OwnerMismatch = 219,
+    TargetMismatch = 220,
+    ContractIdMismatch = 221,
 
     // --- Admin Transfer (109-112) ---
     /// No pending admin transfer exists.

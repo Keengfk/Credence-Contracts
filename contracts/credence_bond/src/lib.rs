@@ -64,6 +64,16 @@ pub struct IdentityBond {
 // Re-export attestation type for external callers.
 pub use types::Attestation;
 
+/// Storage-key discriminator for every entry this contract writes.
+///
+/// # Wire stability — keys are permanent
+/// Each variant's `#[contracttype]` encoding is the literal ledger key for its
+/// data. The encoding is keyed by the **variant name** (a `Symbol`) plus its
+/// field shape — not by declaration order. Therefore **renaming** a variant or
+/// **changing its field count/types** moves the key and **orphans** existing
+/// ledger entries; **appending** new variants is safe; reordering is
+/// encoding-stable. The same fingerprint guard used for the delegation contract
+/// applies here — see `docs/datakey-fingerprint.md`.
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {

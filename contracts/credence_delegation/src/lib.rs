@@ -31,7 +31,7 @@ pub use verifier::SchemeTag;
 // ---------------------------------------------------------------------------
 
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DelegationType {
     Attestation,
     Management,
@@ -70,9 +70,27 @@ pub struct DelegationSummary {
 // Storage keys
 // ---------------------------------------------------------------------------
 
+/// Storage-key discriminator for every persistent/instance entry this contract
+/// writes.
+///
+/// # Wire stability — keys are permanent
+/// Each variant's Soroban (`#[contracttype]`) encoding is the literal ledger key
+/// under which its data lives. Unlike a `bincode`/`#[repr(u32)]` enum, a
+/// `#[contracttype]` enum is keyed by the **variant name** (encoded as a
+/// `Symbol`) plus its field shape — never by declaration order. Therefore:
+/// * **Renaming** a variant, or **changing its field count/types**, changes the
+///   encoded key and **orphans every existing ledger entry** for it. Never do
+///   this for a deployed contract.
+/// * **Reordering** variants is encoding-stable (the key is name-based), but
+///   keep them ordered for readability and to match the fingerprint snapshot.
+/// * **Appending** a new variant is safe.
+///
+/// The encoded bytes of every variant are pinned in
+/// `tests/datakey_fingerprint.rs`; any rename/retype that moves a key fails CI.
+/// See `docs/datakey-fingerprint.md`.
 #[contracttype]
 #[derive(Clone)]
-enum DataKey {
+pub enum DataKey {
     /// Admin address with power to initialize and override.
     Admin,
     /// Boolean flag: true if contract actions are currently paused.
@@ -491,14 +509,14 @@ impl CredenceDelegation {
         }
 
         // Validate scheme is known
-        verifier::validate_scheme_registered(&e, scheme as u8);
+        verifier::validate_scheme_registered(&e, scheme);
 
         // Register the verifier
         let key = DataKey::Verifier(scheme);
         e.storage().instance().set(&key, &verifier_id);
 
         // Emit audit event
-        verifier::emit_verifier_registered(&e, scheme as u8, &verifier_id, &admin);
+        verifier::emit_verifier_registered(&e, scheme, &verifier_id, &admin);
 
         e.events().publish(
             (Symbol::new(&e, "verifier_registered"), scheme),
@@ -514,7 +532,9 @@ impl CredenceDelegation {
     /// Clients can use this to check scheme support before submitting
     /// delegated payloads.
     pub fn get_verifier(e: Env, scheme: u32) -> Option<Address> {
-        e.storage().instance().get(&DataKey::Verifier(scheme as u8))
+        e.storage()
+            .instance()
+            .get(&DataKey::Verifier(scheme))
     }
 
     // -----------------------------------------------------------------------
