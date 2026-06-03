@@ -88,16 +88,19 @@ fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
     let action_u32 = action as u32;
 
     // Build an 8-byte preimage: 4 bytes action || 4 bytes epoch (big-endian).
-    let preimage = Bytes::from_array(e, &[
-        ((action_u32 >> 24) & 0xff) as u8,
-        ((action_u32 >> 16) & 0xff) as u8,
-        ((action_u32 >> 8) & 0xff) as u8,
-        (action_u32 & 0xff) as u8,
-        ((epoch >> 24) & 0xff) as u8,
-        ((epoch >> 16) & 0xff) as u8,
-        ((epoch >> 8) & 0xff) as u8,
-        (epoch & 0xff) as u8,
-    ]);
+    let preimage = Bytes::from_array(
+        e,
+        &[
+            ((action_u32 >> 24) & 0xff) as u8,
+            ((action_u32 >> 16) & 0xff) as u8,
+            ((action_u32 >> 8) & 0xff) as u8,
+            (action_u32 & 0xff) as u8,
+            ((epoch >> 24) & 0xff) as u8,
+            ((epoch >> 16) & 0xff) as u8,
+            ((epoch >> 8) & 0xff) as u8,
+            (epoch & 0xff) as u8,
+        ],
+    );
 
     let hash = e.crypto().sha256(&preimage);
 
@@ -316,9 +319,7 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
 
     // Idempotent: only write the proposal record if it does not already exist.
     if !e.storage().instance().has(&proposal_key) {
-        e.storage()
-            .instance()
-            .set(&proposal_key, &(action as u32));
+        e.storage().instance().set(&proposal_key, &(action as u32));
         e.storage()
             .instance()
             .set(&DataKey::PauseApprovalCount(id), &0_u32);
@@ -407,10 +408,7 @@ fn do_unpause(e: &Env, proposal_id: Option<u64>) {
 ///
 /// This function is intentionally **not** the primary resolution path for
 /// new proposals; use [`get_pause_proposal_state`] for those.
-pub fn get_proposal_by_legacy_id(
-    e: &Env,
-    legacy_id: u64,
-) -> Result<u32, ContractError> {
+pub fn get_proposal_by_legacy_id(e: &Env, legacy_id: u64) -> Result<u32, ContractError> {
     e.storage()
         .instance()
         .get(&DataKey::PauseProposal(legacy_id))

@@ -533,9 +533,7 @@ impl CredenceDelegation {
     /// Clients can use this to check scheme support before submitting
     /// delegated payloads.
     pub fn get_verifier(e: Env, scheme: u32) -> Option<Address> {
-        e.storage()
-            .instance()
-            .get(&DataKey::Verifier(scheme))
+        e.storage().instance().get(&DataKey::Verifier(scheme))
     }
 
     // -----------------------------------------------------------------------
@@ -718,7 +716,6 @@ impl CredenceDelegation {
 
 // #[cfg(test)]
 // mod test_verifier;
-
 #[cfg(test)]
 mod test_pausable;
 

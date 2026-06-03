@@ -43,7 +43,11 @@ fn fingerprints(env: &Env) -> Vec<(&'static str, String)> {
         ("PauseApprovalCount", fp(DataKey::PauseApprovalCount(0))),
         (
             "Delegation",
-            fp(DataKey::Delegation(a.clone(), b.clone(), DelegationType::Attestation)),
+            fp(DataKey::Delegation(
+                a.clone(),
+                b.clone(),
+                DelegationType::Attestation,
+            )),
         ),
         ("Nonce", fp(DataKey::Nonce(a.clone()))),
         ("Verifier", fp(DataKey::Verifier(0))),

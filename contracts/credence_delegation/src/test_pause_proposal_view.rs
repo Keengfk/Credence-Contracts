@@ -38,7 +38,12 @@ fn setup() -> Setup {
     client.set_pause_signer(&admin, &s2, &true);
     client.set_pause_threshold(&admin, &2);
 
-    Setup { e, client, contract_id, signers: [s1, s2] }
+    Setup {
+        e,
+        client,
+        contract_id,
+        signers: [s1, s2],
+    }
 }
 
 /// Direct per-key reads, executed inside the contract's storage context, so we

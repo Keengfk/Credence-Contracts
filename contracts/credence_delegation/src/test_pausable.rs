@@ -39,16 +39,30 @@ fn test_pause_blocks_state_changes_but_allows_reads() {
 
     // State changes should fail
     assert!(client
-        .try_delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64)
+        .try_delegate(
+            &owner,
+            &delegate,
+            &DelegationType::Attestation,
+            &86400_u64,
+            &0_u64
+        )
         .is_err());
 
-    assert!(client.try_revoke_attestation(&owner, &delegate, &0_u64).is_err());
+    assert!(client
+        .try_revoke_attestation(&owner, &delegate, &0_u64)
+        .is_err());
 
     client.unpause(&admin);
     assert!(!client.is_paused());
 
     // State change works again
-    let _ = client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
+    let _ = client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &86400_u64,
+        &0_u64,
+    );
 }
 
 #[test]
@@ -157,7 +171,13 @@ fn test_delegate_paused() {
     let delegate = Address::generate(&env);
     client.pause(&admin);
     assert!(client
-        .try_delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64)
+        .try_delegate(
+            &owner,
+            &delegate,
+            &DelegationType::Attestation,
+            &86400_u64,
+            &0_u64
+        )
         .is_err());
 }
 
@@ -166,7 +186,13 @@ fn test_revoke_delegation_paused() {
     let (env, admin, client) = setup();
     let owner = Address::generate(&env);
     let delegate = Address::generate(&env);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
+    client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &86400_u64,
+        &0_u64,
+    );
     client.pause(&admin);
     assert!(client
         .try_revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &0_u64)
@@ -178,9 +204,17 @@ fn test_revoke_attestation_paused() {
     let (env, admin, client) = setup();
     let owner = Address::generate(&env);
     let delegate = Address::generate(&env);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
+    client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &86400_u64,
+        &0_u64,
+    );
     client.pause(&admin);
-    assert!(client.try_revoke_attestation(&owner, &delegate, &0_u64).is_err());
+    assert!(client
+        .try_revoke_attestation(&owner, &delegate, &0_u64)
+        .is_err());
 }
 
 #[test]
@@ -195,6 +229,7 @@ fn test_execute_delegated_delegate_paused() {
         domain: DomainTag::Delegate,
         owner: owner.clone(),
         target: delegate.clone(),
+        scheme: 0,
     };
     assert!(client
         .try_execute_delegated_delegate(
@@ -212,7 +247,13 @@ fn test_execute_delegated_revoke_paused() {
     let (env, admin, client) = setup();
     let owner = Address::generate(&env);
     let delegate = Address::generate(&env);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
+    client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &86400_u64,
+        &0_u64,
+    );
     client.pause(&admin);
     let payload = DelegatedActionPayload {
         nonce: 0,
@@ -220,6 +261,7 @@ fn test_execute_delegated_revoke_paused() {
         domain: DomainTag::RevokeDelegation,
         owner: owner.clone(),
         target: delegate.clone(),
+        scheme: 0,
     };
     assert!(client
         .try_execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload)
@@ -231,7 +273,13 @@ fn test_execute_delegated_revoke_attest_paused() {
     let (env, admin, client) = setup();
     let owner = Address::generate(&env);
     let delegate = Address::generate(&env);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
+    client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &86400_u64,
+        &0_u64,
+    );
     client.pause(&admin);
     let payload = DelegatedActionPayload {
         nonce: 0,
@@ -239,6 +287,7 @@ fn test_execute_delegated_revoke_attest_paused() {
         domain: DomainTag::RevokeAttestation,
         owner: owner.clone(),
         target: delegate.clone(),
+        scheme: 0,
     };
     assert!(client
         .try_execute_delegated_revoke_attest(&owner, &delegate, &payload)
