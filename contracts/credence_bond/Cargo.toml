@@ -26,6 +26,7 @@ crate-type = ["cdylib", "rlib"]
 name = "cost"
 path = "benches/cost.rs"
 harness = false
+test = false
 
 # Explicit baseline refresher: `cargo run -p credence_bond --bin update-cost-baseline`.
 [[bin]]
