@@ -792,6 +792,48 @@ impl CredenceBond {
         weighted_attestation::set_weight_config(&e, multiplier_bps, max_weight);
     }
 
+    /// Transfer the admin role to a new address.
+    ///
+    /// This entrypoint requires both the current admin and the proposed new admin
+    /// to authorize the call. The dual-auth requirement ensures the new admin
+    /// explicitly accepts the role before it becomes active.
+    ///
+    /// Errors:
+    /// - `ContractError::NotInitialized` when the admin has not been set.
+    /// - `ContractError::NotAdmin` when `current_admin` does not match the stored admin.
+    /// - `ContractError::InvalidAdminAddress` when `new_admin` is a zero/unset address.
+    /// - `ContractError::AdminUnchanged` when `new_admin` equals `current_admin`.
+    pub fn transfer_admin(e: Env, current_admin: Address, new_admin: Address) {
+        current_admin.require_auth();
+        new_admin.require_auth();
+
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != current_admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        if stored_admin == new_admin {
+            panic_with_error!(e, ContractError::AdminUnchanged);
+        }
+
+        let zero_str = soroban_sdk::String::from_str(
+            &e,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        );
+        if new_admin.to_string() == zero_str {
+            panic_with_error!(e, ContractError::InvalidAdminAddress);
+        }
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+
     /// Get weight config (multiplier_bps, max_weight).
     pub fn get_weight_config(e: Env) -> (u32, u32) {
         weighted_attestation::get_weight_config(&e)
