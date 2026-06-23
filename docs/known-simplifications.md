@@ -44,18 +44,6 @@ Each entry describes what is simplified, why, and what a production implementati
 
 ---
 
-## 4. Slashed Funds Are Not Transferred to Treasury
-
-**Where:** `contracts/credence_bond/src/slashing.rs`
-
-**What:** When a bond is slashed, `slashed_amount` is incremented and the withdrawable balance is reduced, but no tokens are actually moved. The slashed value sits locked in the contract with no mechanism to transfer it out.
-
-**Impact:** Slashing correctly prevents the identity from withdrawing the slashed portion, but the protocol does not capture those funds. In a production system, slashed tokens would be transferred to the treasury or burned.
-
-**Production path:** After updating `slashed_amount`, call `transfer(treasury, slash_amount)` to move the slashed tokens to the treasury address. This requires the treasury to be configured and the token integration to be live. See [slashing.md](slashing.md) and [treasury.md](treasury.md).
-
----
-
 ## 6. Early-Exit Penalty Transfer to Treasury is Conditional
 
 **Where:** `contracts/credence_bond/src/early_exit_penalty.rs`
