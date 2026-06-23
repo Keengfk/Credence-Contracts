@@ -38,7 +38,12 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
     require_admin_auth(e, admin);
 
     // Reject zero/invalid signer address
-    if signer.to_string() == String::from_str(e, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF") {
+    if signer.to_string()
+        == String::from_str(
+            e,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        )
+    {
         panic_with_error!(e, ContractError::InvalidAdminAddress);
     }
     if *signer == e.current_contract_address() {

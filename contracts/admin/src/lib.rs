@@ -88,8 +88,7 @@ enum DataKey {
 /// Assigning a governance role to (or transferring ownership to) this
 /// address can permanently strand administration, so every privileged
 /// entrypoint that accepts a target `Address` MUST reject it.
-const INVALID_ADDRESS_SENTINEL: &str =
-    "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+const INVALID_ADDRESS_SENTINEL: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
 #[contract]
 pub struct AdminContract;

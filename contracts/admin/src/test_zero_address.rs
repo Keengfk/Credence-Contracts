@@ -205,11 +205,7 @@ mod zero_address_tests {
 
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
-            AdminContract::transfer_ownership(
-                env.clone(),
-                super_admin.clone(),
-                new_owner.clone(),
-            );
+            AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_owner.clone());
         });
 
         env.mock_all_auths();
