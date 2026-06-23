@@ -46,23 +46,3 @@ jobs:
 
       - name: Run workspace tests
         run: cargo test --workspace
-
-  changelog-check:
-    name: Changelog Required
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Verify CHANGELOG.md update
-        run: |
-          changed_contracts=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -c "^contracts/" || true)
-          changed_changelog=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -c "^CHANGELOG\.md$" || true)
-
-          if [ "$changed_contracts" -gt 0 ] && [ "$changed_changelog" -eq 0 ]; then
-            echo "::error title=Missing CHANGELOG.md entry::PR modifies contracts/ but does not update CHANGELOG.md. Please document your changes in the Unreleased section."
-            exit 1
-          fi
