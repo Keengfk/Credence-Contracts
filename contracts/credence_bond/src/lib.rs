@@ -40,6 +40,10 @@ mod test_describe;
 #[cfg(test)]
 mod test_liquidate;
 
+/// Tests for the bounded claim expiry sweep (permissionless keeper).
+#[cfg(test)]
+mod test_claim_expiry_sweep;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, IntoVal, String, Symbol,
@@ -1498,6 +1502,45 @@ impl CredenceBond {
     /// See also: [`docs/reentrancy.md`](../../../docs/reentrancy.md)
     pub fn is_locked(e: Env) -> bool {
         Self::check_lock(&e)
+    }
+
+    /// Permissionless, bounded sweep to expire stale pending claims.
+    ///
+    /// Scans up to `max_iter` pending claims for the user, removes those past
+    /// their `expires_at` timestamp, and returns the count pruned. Claims with
+    /// no expiry (`expires_at == 0`) are never removed. This is a keeper-callable
+    /// operation to prune storage without requiring privileged access.
+    ///
+    /// # Arguments
+    /// * `user` - Address whose claims to scan
+    /// * `max_iter` - Maximum number of claims to scan (hard-capped at 50 for gas safety)
+    ///
+    /// # Returns
+    /// Number of expired claims removed
+    ///
+    /// # Events
+    /// Emits `claims_expired(user, pruned_count)` event for off-chain indexing.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use credence_bond::{CredenceBond, CredenceBondClient};
+    /// use soroban_sdk::{Env, Address};
+    /// use soroban_sdk::testutils::Address as _;
+    ///
+    /// let e = Env::default();
+    /// let contract_id = e.register(CredenceBond, ());
+    /// let client = CredenceBondClient::new(&e, &contract_id);
+    /// let user = Address::generate(&e);
+    ///
+    /// // Sweep up to 50 claims for the user
+    /// let pruned = client.expire_claims(&user, &50_u32);
+    /// println!("Removed {} expired claims", pruned);
+    /// ```
+    ///
+    /// See also: [`docs/batch-operations.md`](../../../docs/batch-operations.md)
+    pub fn expire_claims(e: Env, user: Address, max_iter: u32) -> u32 {
+        claims::expire_claims_bounded(&e, &user, max_iter)
     }
 
     // -----------------------------------------------------------------
