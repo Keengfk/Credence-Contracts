@@ -36,7 +36,6 @@
 //!
 //! See `docs/bond-invariants.md` for owners and rationale.
 
-#![cfg(test)]
 #![allow(dead_code)]
 
 use crate::{DataKey, IdentityBond};

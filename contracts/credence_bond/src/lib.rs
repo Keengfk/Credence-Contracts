@@ -1735,6 +1735,7 @@ mod test_bond_drift;
 #[cfg(test)]
 pub mod fork_divergent;
 
+pub mod test_access_control;
 /// Regression guard: canonical lifecycle scenarios with pinned expected states,
 /// plus a cross-contract divergence-detection smoke test.
 #[cfg(test)]
