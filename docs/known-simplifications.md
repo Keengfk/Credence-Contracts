@@ -44,19 +44,7 @@ Each entry describes what is simplified, why, and what a production implementati
 
 ---
 
-## 4. Admin Role is Non-Transferable After Initialization (credence_bond)
-
-**Where:** `contracts/credence_bond/src/lib.rs`, `contracts/credence_bond/src/access_control.rs`
-
-**What:** In the bond contract, the admin address is set once at initialization and cannot be changed. There is no `transfer_admin` function on the bond contract itself (unlike `credence_registry`, which does support admin transfer).
-
-**Impact:** If the admin key is lost or compromised, the contract cannot be re-administered without a contract upgrade or migration.
-
-**Production path:** Add an `transfer_admin(current_admin, new_admin)` function with dual-auth (both addresses must sign) to allow safe key rotation. The `admin` contract (`contracts/admin/`) provides a more complete role management model that can be adopted. See [admin-roles.md](admin-roles.md).
-
----
-
-## 5. Slashed Funds Are Not Transferred to Treasury
+## 4. Slashed Funds Are Not Transferred to Treasury
 
 **Where:** `contracts/credence_bond/src/slashing.rs`
 
@@ -149,8 +137,7 @@ Each entry describes what is simplified, why, and what a production implementati
 | 1 | Token transfer stubbed in tests | credence_bond | Configure live USDC via `set_usdc_token` |
 | 2 | Single-bond-per-contract-instance | credence_bond | Multi-bond map storage |
 | 3 | Treasury is pure accounting, no token custody | credence_treasury | Add real token transfers on withdrawal |
-| 4 | Admin non-transferable in bond contract | credence_bond | Add `transfer_admin` with dual-auth |
-| 5 | Slashed funds not transferred to treasury | credence_bond | Call `transfer(treasury, slash_amount)` post-slash |
+| 4 | Slashed funds not transferred to treasury | credence_bond | Call `transfer(treasury, slash_amount)` post-slash |
 | 6 | Early-exit penalty dropped if no treasury | credence_bond | Require treasury before `withdraw_early` |
 | 7 | `get_all_identities()` unbounded | credence_registry | Add pagination; use event-based indexing |
 | 8 | Expired delegations not cleaned up | credence_delegation | TTL storage or explicit cleanup function |

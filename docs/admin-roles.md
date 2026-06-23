@@ -334,3 +334,6 @@ Admin rotation uses a secure two-step flow with a 24-hour timelock:
 - Fat-finger protection: wrong address cannot self-accept
 - Timelock: gives time to cancel if admin is compromised
 - No single call can hijack admin
+
+### Dual-auth bond transfer_admin
+The bond contract uses a direct dual-auth transfer flow: `transfer_admin(current_admin, new_admin)` requires both the current admin and the new admin to authorize the transaction. This ensures the new admin explicitly accepts the role and prevents accidental or unilateral ownership changes.

@@ -1,7 +1,7 @@
 #![cfg(test)]
 extern crate alloc;
 extern crate std;
-use crate::{CredenceBond, CredenceBondClient};
+use crate::{CredenceBond, CredenceBondClient, DataKey};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, IntoVal};
 
@@ -23,6 +23,32 @@ fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
 struct PrivilegedCase {
     name: &'static str,
     invoke: fn(&Env, &CredenceBondClient<'_>, &Address),
+}
+
+fn invoke_transfer_admin(env: &Env, client: &CredenceBondClient<'_>, caller: &Address) {
+    let new_admin = Address::generate(env);
+    let args = (caller.clone(), new_admin.clone()).into_val(env);
+    env.mock_auths(&[
+        soroban_sdk::testutils::MockAuth {
+            address: caller,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args: args.clone(),
+                sub_invokes: &[],
+            },
+        },
+        soroban_sdk::testutils::MockAuth {
+            address: &new_admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args,
+                sub_invokes: &[],
+            },
+        },
+    ]);
+    client.transfer_admin(caller, &new_admin);
 }
 
 fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
@@ -151,6 +177,10 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                 client.collect_fees(caller);
             },
         },
+        PrivilegedCase {
+            name: "transfer_admin",
+            invoke: invoke_transfer_admin,
+        },
     ]
 }
 
@@ -243,6 +273,68 @@ fn test_genuine_require_auth_enforcement() {
     }));
 
     assert!(res.is_err(), "Call should have failed due to missing auth");
+}
+
+#[test]
+fn test_transfer_admin_rotates_admin_and_rejects_old_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _user, _attacker) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let args = (admin.clone(), new_admin.clone()).into_val(&env);
+    env.mock_auths(&[
+        soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args: args.clone(),
+                sub_invokes: &[],
+            },
+        },
+        soroban_sdk::testutils::MockAuth {
+            address: &new_admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args,
+                sub_invokes: &[],
+            },
+        },
+    ]);
+    client.transfer_admin(&admin, &new_admin);
+
+    let stored_admin: Address = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin).unwrap()
+    });
+    assert_eq!(stored_admin, new_admin);
+
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &new_admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "set_early_exit_config",
+            args: (&new_admin, &treasury, 500_u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.set_early_exit_config(&new_admin, &treasury, &500_u32);
+
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "set_early_exit_config",
+            args: (&admin, &treasury, 500_u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.set_early_exit_config(&admin, &treasury, &500_u32);
+    }));
+    assert!(result.is_err(), "old admin should no longer be authorized");
 }
 
 #[test]
